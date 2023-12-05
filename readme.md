@@ -63,7 +63,7 @@ You can build circuits using the modules integrated functions. A circuit is buil
 You can apply Hadamard gates using the function `hadamard`.
 
 ```julia
-hadamard(grover_circ, 3, false)
+hadamard(grover_circ, 3)
 ```
 
 Assuming we have an empty circuit, this will add a Hadamard gate to the `3`-rd `lane`.
@@ -73,13 +73,13 @@ Assuming we have an empty circuit, this will add a Hadamard gate to the `3`-rd `
 We can also apply Hadamard gates to multiple `lanes` at once, using either
 
 ```julia
-hadamard(grover_circ, 1:3, false)
+hadamard(grover_circ, 1:3)
 ```
 
 or
 
 ```julia
-hadamard(grover_circ, [1, 2, 3], false)
+hadamard(grover_circ, [1, 2, 3])
 ```
 
 This will add a Hadamard gate to the `1`-st, `2`-nd and `3`-rd `lane`.
@@ -89,7 +89,7 @@ This will add a Hadamard gate to the `1`-st, `2`-nd and `3`-rd `lane`.
 You can also add controlled Hadamard gates by specifing the `control lanes`
 
 ```julia
-hadamard(grover_circ, 1, false, control_lanes = 2)
+hadamard(grover_circ, 1, control_lanes = 2)
 ```
 
 ![h3](imgs/hadamard3.svg)
@@ -97,7 +97,7 @@ hadamard(grover_circ, 1, false, control_lanes = 2)
 Each hadamard gate can be controlled by multiple `control lanes`
 
 ```julia
-hadamard(grover_circ, 1, false, control_lanes = [2:3])
+hadamard(grover_circ, 1, control_lanes = [2:3])
 ```
 
 ![h4](imgs/hadamard4.svg)
@@ -105,7 +105,7 @@ hadamard(grover_circ, 1, false, control_lanes = [2:3])
 You can also specify multiple controlled Hadamard gates at once
 
 ```julia
-hadamard(grover_circ, 1:2, false, control_lanes = [3, 4:6])
+hadamard(grover_circ, 1:2, control_lanes = [3, 4:6])
 ```
 
 ![h5](imgs/hadamard5.svg)
@@ -115,7 +115,7 @@ hadamard(grover_circ, 1:2, false, control_lanes = [3, 4:6])
 You can apply Not gates using the function `not`.
 
 ```julia
-not(grover_circ, 3, false)
+not(grover_circ, 3)
 ```
 
 ![n1](imgs/not1.svg)
@@ -123,7 +123,7 @@ not(grover_circ, 3, false)
 You can also apply multiple Not gates, as well as controlled Not gates, in the same way as for [Hadamard gates](#hadamard-gates).
 
 ```julia
-not(grover_circ, 1:2, true, control_lanes = [3, 4:6])
+not(grover_circ, 1:2, control_lanes = [3, 4:6])
 ```
 
 ![n2](imgs/not2.svg)
@@ -133,7 +133,7 @@ not(grover_circ, 1:2, true, control_lanes = [3, 4:6])
 Learned rotations are granular rotations that can be learned by a classical optimizer. The granularity of such a `learned rotation` is dependent on the number of control lanes. In general, we can learn $2^n$ individual rotations where $n$ is the number of control lanes. This function is implemented as `learned_rotation`.
 
 ```julia
-learned_rotation(grover_circ, 1, 3:6, true)
+learned_rotation(grover_circ, 1, 3:6)
 ```
 
 ![lr1](imgs/learned_rotation1.svg)
@@ -174,7 +174,7 @@ For example, let's measure a learned rotation after applying Hadamard gates on t
 grover_circ = empty_circuit(1, 2)
 
 hadamard(grover_circ, 2:3)
-learned_rotation(grover_circ, 1, true, 2:3)
+learned_rotation(grover_circ, 1, 2:3)
 
 my_circuit = compile_circuit(grover_circ)
 ```
@@ -206,8 +206,8 @@ Let's take create a model and train it on a simple dataset. We define the model 
 grover_circ = empty_circuit(1, 3)
 
 hadamard(grover_circ, 2:4)
-learned_rotation(grover_circ, 1, true, 2:4)
-not(grover_circ, 1, true; control_lanes = [2:3])
+learned_rotation(grover_circ, 1, 2:4)
+not(grover_circ, 1; control_lanes = [2:3])
 ```
 
 We can visualize the circuit:
@@ -278,13 +278,13 @@ We can also train a model that returns multiple target values. Let's define anot
 grover_circ = empty_circuit(2, 3)
 
 # Apply Hadamard gates on the model lanes
-hadamard(grover_circ, model_lanes(grover_circ), false)
+hadamard(grover_circ, model_lanes(grover_circ))
 
 # Apply a Learned Rotation on the first target lane
-learned_rotation(grover_circ, target_lanes(grover_circ)[1], model_lanes(grover_circ), true)
+learned_rotation(grover_circ, target_lanes(grover_circ)[1], model_lanes(grover_circ))
 
 # Apply a controlled Not gate on the second target lane
-not(grover_circ, 2, true; control_lanes = [model_lanes(grover_circ)[1:2]])
+not(grover_circ, 2; control_lanes = [model_lanes(grover_circ)[1:2]])
 ```
 
 We can visualize the circuit:

@@ -51,7 +51,7 @@ not(grover_circ, 2; control_lanes = 1)
 # As we use multiple target lanes, auto_compute automatically inserts a lane below the target lanes which encode the criterions to this lane
 # The reflection is done with respect to the inserted lane
 criterion = [true, true]
-out, main_circ, grov = auto_compute(grover_circ, target_lanes, criterion, evaluate = true)
+out, main_circ, grov = auto_compute(grover_circ, criterion, evaluate = true)
 
 # Visualize the main circuit
 vizcircuit(main_circ)

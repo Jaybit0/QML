@@ -44,7 +44,7 @@ rotation(grover_circ, target_lane, control_lanes = 2:5; max_rotation_rad = 2*pi)
 
 # We expect the first lane to return true
 criterion = [true]
-out, main_circ, grov = auto_compute(grover_circ, target_lane:target_lane, criterion, forced_grover_iterations = 1, evaluate = false)
+out, main_circ, grov = auto_compute(grover_circ, criterion, forced_grover_iterations = 1)#, evaluate = false)
 
 # Vizualize the main circuit
 vizcircuit(grov)

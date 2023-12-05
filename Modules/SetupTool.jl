@@ -16,7 +16,6 @@ module SetupTool
             for req in requiredPackages
                 Pkg.add(req)
                 if req in packagesToBuild
-                    println("Building")
                     Pkg.build(req)
                 end
             end
@@ -59,9 +58,9 @@ module SetupTool
             open(flag_file, "w") do f
                 write(f, "The environment is prepared.")
             end
-            println("Environment flag set.")
+            @info "Environment flag set."
         else
-            println("Environment has already been prepared.")
+            @info "Environment has been prepared."
         end
     end
 

@@ -58,7 +58,7 @@ not(grover_circ, 2; control_lanes = 1)
 # The reflection is done with respect to the inserted lane
 # As we have provided a wrong inverse, the process should fail and auto_compute should automatically identify the wrong inverse
 criterion = [true, true]
-out, main_circ, grov = auto_compute(grover_circ, target_lanes, criterion, evaluate = true)
+out, main_circ, grov = auto_compute(grover_circ, criterion, evaluate = true)
 
 # Visualize the main circuit
 vizcircuit(main_circ)

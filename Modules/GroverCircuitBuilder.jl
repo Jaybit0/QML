@@ -145,7 +145,7 @@ module GroverCircuitBuilder
         if evaluate 
             cumulative_pre_probability = computeCumProb(out, oracle_function)
         else
-            return nothing, main_circuit, createGroverCircuit(circ_size, isnothing(forced_grover_iterations) ? 1 : forced_grover_iterations, build_grover_iteration(circuit, oracle_lane, _use_grover_lane(target_lanes) ? true : target_bits[1]))
+            return nothing, main_circuit, createGroverCircuit(circ_size, isnothing(forced_grover_iterations) ? 1 : forced_grover_iterations, build_grover_iteration(circuit, oracle_lane, _use_grover_lane(target_lanes) ? true : target_bits[1][1][2]))
         end
 
         @info "Cumulative Pre-Probability: $cumulative_pre_probability"
@@ -186,7 +186,7 @@ module GroverCircuitBuilder
 
         @info "Compiling grover circuit..."
         # Create the grover circuit to amplify the amplitude
-        grover_circuit = createGroverCircuit(circ_size, actual_grover_iterations, build_grover_iteration(circuit, oracle_lane, _use_grover_lane(target_lanes) ? true : target_bits[1]))
+        grover_circuit = createGroverCircuit(circ_size, actual_grover_iterations, build_grover_iteration(circuit, oracle_lane, _use_grover_lane(target_lanes) ? true : target_bits[1][1][2]))
         @info "Grover circuit compiled"
 
         @info "Evaluating grover circuit..."
@@ -315,8 +315,10 @@ module GroverCircuitBuilder
             end
         end
 
-        pushfirst!(circuit.circuit, NotBlock(negate_output_lanes, nothing))
-        pushfirst!(circuit.circuit_meta, BlockMeta(circuit.current_checkpoint))
+        if length(negate_output_lanes) > 0
+            pushfirst!(circuit.circuit, NotBlock(negate_output_lanes, nothing))
+            pushfirst!(circuit.circuit_meta, BlockMeta(circuit.current_checkpoint))
+        end
 
         target_lanes = vcat(target_lanes, inserted_batch_lanes)
 
@@ -560,6 +562,10 @@ module GroverCircuitBuilder
 
     function _compile_not_block(circuit::GroverCircuit, block::NotBlock, meta::BlockMeta; inv::Bool = false)::Yao.YaoAPI.AbstractBlock
         circ_size = circuit_size(circuit)
+
+        if length(block.target_lanes) == 0
+            return chain(circ_size)
+        end
 
         if isnothing(block.control_lanes)
             # TODO: Handle inv
