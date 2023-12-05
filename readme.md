@@ -415,3 +415,48 @@ vizcircuit(main_circ)
 When comparing the circuit to the previous one, we can see that the `oracle lane` is only controlled by the second `target lane`.
 
 ### Batch training
+
+Our module also supports batch training. Let's take the [previous circuit](#model-training-with-multiple-target-values). Now, we want to train the model to return `|00>` if we input `|11>`, and `|11>` if we input `|00>`. We can do that using the `auto_compute` function.
+
+```julia
+out, main_circ, grov = auto_compute(grover_circ, [[(true, false), (true, false)], [(false, true), (false, true)]])
+```
+
+Executing this code should generate the following logs:
+
+```
+[ Info: Simulating grover circuit...
+[ Info: Inserting batch-lane after lane number 2
+[ Info: Inserting batch-lane after lane number 3
+[ Info: Inserting grover-lane after lane number 4
+[ Info: Main circuit compiled
+[ Info: Evaluating main circuit...
+[ Info: Main circuit evaluated
+[ Info: Cumulative Pre-Probability: 0.03393082617584077
+[ Info: Angle towards orthogonal state: 0.18526114869926855
+[ Info: Angle towards orthogonal state (deg): 10.614681928213649
+[ Info: Optimal number of Grover iterations: 4
+[ Info: Actual optimum from formula: 3.7394110633113504
+[ Info: Compiling grover circuit...
+[ Info: Grover circuit compiled
+[ Info: Evaluating grover circuit...
+[ Info: Grover circuit evaluated
+[ Info: 
+[ Info: ======== RESULTS ========
+[ Info: =========================
+[ Info: 
+[ Info: Cumulative Probability (after 4x Grover): 0.9907062576458237
+[ Info: Predicted likelihood after 4x Grover: 0.9907062576458264
+```
+
+We can visualize the `main_circuit`:
+
+```julia
+vizcircuit(main_circ)
+```
+
+![](imgs/batch_training1.svg)
+
+When comparing the circuit to the previous one, we can see that the `target lanes` have been duplicated, the first two being inverted as we specified the input mapping `|11>` at the first batch. Note that the module automatically identifies relevant gates and duplicates and shifts them accordingly.
+
+Keep in mind that batch training is in the early stages of development and might not work as expected in some cases.

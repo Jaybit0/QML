@@ -44,7 +44,7 @@ learned_rotation(grover_circ, target_lanes(grover_circ)[1], model_lanes(grover_c
 not(grover_circ, 2; control_lanes = [model_lanes(grover_circ)[1:2]])
 
 #main_circ = compile_circuit(grover_circ, inv = false)
-out, main_circ, grov = auto_compute(grover_circ, [(true, nothing), (true, false)])
+out, main_circ, grov = auto_compute(grover_circ, [[(true, false), (true, false)], [(false, true), (false, true)]])
 
 # Visualize the main circuit
 vizcircuit(main_circ)
