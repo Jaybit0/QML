@@ -45,22 +45,19 @@ module GroverCircuitBuilder
     end
 
     mutable struct RotationBlock <: GroverBlock
-        target_lanes::Int
+        target_lanes::Vector{Int}
         control_lanes::Union{Vector{Vector{Int}}, Nothing}
         rotations::Vector{Number}
-        is_model_function::Bool
     end
 
     mutable struct HadamardBlock <: GroverBlock
         target_lanes::Vector{Int}
         control_lanes::Union{Vector{Vector{Int}}, Nothing}
-        is_model_function::Bool
     end
 
     mutable struct NotBlock <: GroverBlock 
         target_lanes::Vector{Int}
         control_lanes::Union{Vector{Vector{Int}}, Nothing}
-        is_model_function::Bool
     end
 
     mutable struct YaoBlock <: GroverBlock
@@ -68,14 +65,12 @@ module GroverCircuitBuilder
         inv_block::Yao.YaoAPI.AbstractBlock
         target_lanes::Vector{Vector{Int}}
         control_lanes::Union{Vector{Vector{Int}}, Nothing}
-        is_model_function::Bool
     end
 
     mutable struct OracleBlock <: GroverBlock
         oracle_lane::Int
         target_lanes::Vector{Int}
         target_bits::Vector{Bool}
-        is_model_function::Bool
     end
 
     function empty_circuit(target_lanes::Int, model_lanes::Int)::GroverCircuit
@@ -262,15 +257,11 @@ module GroverCircuitBuilder
         target_lanes = _resolve_lanes(output_lanes)
         target_bits = _resolve_output_bits(output_bits)
 
-        
-
         if circuit.preparation_state
             unprepare(circuit)
         end
 
         flattened_target_bits = _flatten_output_bits(target_bits)
-
-        
 
         # Extend target lanes to match batch-size
         inserted_batch_lanes = Vector{Int}()
@@ -288,20 +279,15 @@ module GroverCircuitBuilder
             idx = 1
             while idx <= len
                 block = circuit.circuit[idx]
-                @info block
-                if block.is_model_function
-                    # TODO: This should be reworked
+                meta = circuit.circuit_meta[idx]
+
+                is_model_function, m_target_lanes, m_control_lanes = _check_for_batch_lanes(circuit, block, meta, target_lanes, batch, inserted_batch_lanes)
+
+                if is_model_function
                     new_block = deepcopy(block)
                 
-                    new_block.target_lanes = _map_lanes(circuit, circuit.circuit_meta[idx].insertion_checkpoint, new_block.target_lanes)
-                    new_block.control_lanes = _map_lanes(circuit, circuit.circuit_meta[idx].insertion_checkpoint, new_block.control_lanes)
-
-                    # Trivially offset target lanes. 
-                    if isa(new_block, RotationBlock)
-                        new_block.target_lanes += (batch-1) * length(target_lanes)
-                    else
-                        new_block.target_lanes = map(x -> x + (batch-1) * length(target_lanes), new_block.target_lanes)
-                    end
+                    new_block.target_lanes = m_target_lanes
+                    new_block.control_lanes = m_control_lanes
 
                     insert!(circuit.circuit, idx+1, new_block)
                     insert!(circuit.circuit_meta, idx+1, BlockMeta(circuit.current_checkpoint))
@@ -323,7 +309,7 @@ module GroverCircuitBuilder
             end
         end
 
-        pushfirst!(circuit.circuit, NotBlock(negate_output_lanes, nothing, false))
+        pushfirst!(circuit.circuit, NotBlock(negate_output_lanes, nothing))
         pushfirst!(circuit.circuit_meta, BlockMeta(circuit.current_checkpoint))
 
         target_lanes = vcat(target_lanes, inserted_batch_lanes)
@@ -340,7 +326,7 @@ module GroverCircuitBuilder
         filtered_lanes = [target_lanes[i] for (i, val) in enumerate(flattened_target_bits) if !isnothing(val)]
         filtered_target_bits = filter(x -> !isnothing(x), flattened_target_bits)
         
-        push!(circuit.circuit, OracleBlock(insert_lane_at, filtered_lanes, filtered_target_bits, true))
+        push!(circuit.circuit, OracleBlock(insert_lane_at, filtered_lanes, filtered_target_bits))
         push!(circuit.circuit_meta, BlockMeta(circuit.current_checkpoint))
 
         return insert_lane_at
@@ -404,11 +390,11 @@ module GroverCircuitBuilder
         throw(DomainError(block, "Unknown Grover-Block"))
     end
 
-    function yao_block(circuit::GroverCircuit, target_lanes::Union{Vector, AbstractRange, Int}, block::Yao.YaoAPI.AbstractBlock, inv_block::Yao.YaoAPI.AbstractBlock, is_model_function::Bool; control_lanes::Union{Vector, AbstractRange, Int, Nothing} = nothing, push_to_circuit::Bool = true)::Tuple{YaoBlock, BlockMeta}
+    function yao_block(circuit::GroverCircuit, target_lanes::Union{Vector, AbstractRange, Int}, block::Yao.YaoAPI.AbstractBlock, inv_block::Yao.YaoAPI.AbstractBlock; control_lanes::Union{Vector, AbstractRange, Int, Nothing} = nothing, push_to_circuit::Bool = true)::Tuple{YaoBlock, BlockMeta}
         target_lanes = _resolve_stacked_control_lanes(target_lanes)
         control_lanes = _resolve_stacked_control_lanes(control_lanes)
 
-        block = YaoBlock(block, inv_block, target_lanes, control_lanes, is_model_function)
+        block = YaoBlock(block, inv_block, target_lanes, control_lanes)
         meta = BlockMeta(circuit.current_checkpoint)
 
         if push_to_circuit
@@ -419,11 +405,11 @@ module GroverCircuitBuilder
         return block, meta
     end
 
-    function hadamard(circuit::GroverCircuit, target_lanes::Union{Vector, AbstractRange, Int}, is_model_function::Bool; control_lanes::Union{Vector, AbstractRange, Int, Nothing} = nothing, push_to_circuit::Bool = true)::Tuple{HadamardBlock, BlockMeta}
+    function hadamard(circuit::GroverCircuit, target_lanes::Union{Vector, AbstractRange, Int}; control_lanes::Union{Vector, AbstractRange, Int, Nothing} = nothing, push_to_circuit::Bool = true)::Tuple{HadamardBlock, BlockMeta}
         target_lanes = _resolve_lanes(target_lanes)
         control_lanes = _resolve_stacked_control_lanes(control_lanes)
         
-        block = HadamardBlock(target_lanes, control_lanes, is_model_function)
+        block = HadamardBlock(target_lanes, control_lanes)
         meta = BlockMeta(circuit.current_checkpoint)
 
         if push_to_circuit
@@ -434,7 +420,7 @@ module GroverCircuitBuilder
         return block, meta
     end
 
-    function learned_rotation(circuit::GroverCircuit, target_lane::Int, control_lanes::Union{Vector, AbstractRange, Int}, is_model_function::Bool; max_rotation_rad::Number = 2*pi, push_to_circuit::Bool = true)::Tuple{RotationBlock, BlockMeta}
+    function learned_rotation(circuit::GroverCircuit, target_lane::Int, control_lanes::Union{Vector, AbstractRange, Int}; max_rotation_rad::Number = 2*pi, push_to_circuit::Bool = true)::Tuple{RotationBlock, BlockMeta}
         control_lanes = _resolve_stacked_control_lanes(control_lanes)
 
         current_rotation = max_rotation_rad
@@ -445,7 +431,7 @@ module GroverCircuitBuilder
             push!(rotations, current_rotation)
         end
 
-        block = RotationBlock(target_lane, control_lanes, rotations, is_model_function)
+        block = RotationBlock([target_lane], control_lanes, rotations)
         meta = BlockMeta(circuit.current_checkpoint)
 
         if push_to_circuit
@@ -456,7 +442,7 @@ module GroverCircuitBuilder
         return block, meta
     end
 
-    function rotation(circuit::GroverCircuit, target_lane::Int, is_model_function::Bool; control_lanes::Union{Vector, AbstractRange, Int, Nothing} = nothing, max_rotation_rad::Number = 2*pi, push_to_circuit::Bool = true)::Tuple{RotationBlock, BlockMeta}
+    function rotation(circuit::GroverCircuit, target_lane::Int; control_lanes::Union{Vector, AbstractRange, Int, Nothing} = nothing, max_rotation_rad::Number = 2*pi, push_to_circuit::Bool = true)::Tuple{RotationBlock, BlockMeta}
         control_lanes = _resolve_stacked_control_lanes(control_lanes)
         
         granularity = isnothing(control_lanes) ? 1 : length(control_lanes)
@@ -482,7 +468,7 @@ module GroverCircuitBuilder
             end
         end
 
-        block = RotationBlock(target_lane, control_lanes, rotations, is_model_function)
+        block = RotationBlock([target_lane], control_lanes, rotations)
         meta = BlockMeta(circuit.current_checkpoint)
 
         if push_to_circuit
@@ -493,11 +479,11 @@ module GroverCircuitBuilder
         return block, meta
     end
 
-    function not(circuit::GroverCircuit, target_lanes::Union{Vector, AbstractRange, Int}, is_model_function::Bool; control_lanes::Union{Int, AbstractRange, Vector, Nothing} = nothing, push_to_circuit::Bool = true)::Tuple{NotBlock, BlockMeta}
+    function not(circuit::GroverCircuit, target_lanes::Union{Vector, AbstractRange, Int}; control_lanes::Union{Int, AbstractRange, Vector, Nothing} = nothing, push_to_circuit::Bool = true)::Tuple{NotBlock, BlockMeta}
         target_lanes = _resolve_lanes(target_lanes)
         control_lanes = _resolve_stacked_control_lanes(control_lanes)
 
-        block = NotBlock(target_lanes, control_lanes, is_model_function)
+        block = NotBlock(target_lanes, control_lanes)
         meta = BlockMeta(circuit.current_checkpoint)
 
         if push_to_circuit
@@ -526,7 +512,7 @@ module GroverCircuitBuilder
 
         m_control_gates = inv ? reverse(block.control_lanes) : block.control_lanes
 
-        for i in 1:length(m_control_gates)
+        for i in eachindex(m_control_gates)
             angle = m_rotations[i]
             gates = m_control_gates[i]
             m_circuit = chain(circ_size, put(1:circ_size => m_circuit), control(_map_lanes(circuit, meta.insertion_checkpoint, gates), _map_lanes(circuit, meta.insertion_checkpoint, block.target_lanes) => Ry(inv ? -angle : angle)))
@@ -653,8 +639,6 @@ module GroverCircuitBuilder
 
         return chain(circ_size, put(1:circ_size => x_gates), control(m_target_lanes, _map_lanes(circuit, meta.insertion_checkpoint, block.oracle_lane) => X), put(1:circ_size => x_gates))
     end
-
-
 
 
     # ===== HELPER FUNCTIONS =====
@@ -827,5 +811,38 @@ module GroverCircuitBuilder
 
     function _flatten_output_bits(output_bits::Vector{Vector{Tuple{Bool, Union{Bool, Nothing}}}})::Vector{Union{Bool, Nothing}}
         return reduce(vcat, map(inner_vec -> map(x -> x[2], inner_vec), output_bits))
+    end
+
+    function _check_for_batch_lanes(circuit::GroverCircuit, block::GroverBlock, meta::BlockMeta, target_lanes::Vector{Int}, batch::Int, inserted_batch_lanes::Vector{Int})::Tuple{Bool, Vector{Int}, Union{Vector{Vector{Int}}, Nothing}}
+        m_batch_lane = false
+
+        m_target_lanes = _map_lanes(circuit, meta.insertion_checkpoint, block.target_lanes)
+        m_control_lanes = isnothing(block.control_lanes) ? nothing : _map_lanes(circuit, meta.insertion_checkpoint, block.control_lanes)
+
+        # Walk through individual target lanes and offset them if they are in a batch lane
+        for (i, lane) in enumerate(m_target_lanes)
+            for (j, batch_lane) in enumerate(target_lanes)
+                if lane == batch_lane
+                    m_batch_lane = true
+                    m_target_lanes[i] = inserted_batch_lanes[(batch-2) * length(target_lanes) + j]
+                end
+            end
+        end
+
+        # Walk through individual control lanes and offset them if they are in a batch lane
+        if !isnothing(block.control_lanes)
+            for (i, ctrl) in enumerate(block.control_lanes)
+                for (i2, lane) in enumerate(ctrl)
+                    for (j, batch_lane) in enumerate(target_lanes)
+                        if lane == batch_lane
+                            m_batch_lane = true
+                            m_control_lanes[i][i2] = inserted_batch_lanes[(batch-2) * length(target_lanes) + j]
+                        end
+                    end
+                end
+            end
+        end
+
+        return m_batch_lane, m_target_lanes, m_control_lanes
     end
 end

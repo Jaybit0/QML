@@ -34,9 +34,10 @@ using Yao.EasyBuild, YaoPlots
 # Initialize an empty circuit with 2 target lanes and 4 model lanes
 grover_circ = empty_circuit(2, 3)
 
-hadamard(grover_circ, model_lanes(grover_circ), false)
-learned_rotation(grover_circ, target_lanes(grover_circ)[1], model_lanes(grover_circ)[1:2], true)
-not(grover_circ, 2, true; control_lanes = [model_lanes(grover_circ)[2:3]])
+hadamard(grover_circ, model_lanes(grover_circ))
+learned_rotation(grover_circ, target_lanes(grover_circ)[1], model_lanes(grover_circ)[1:2])
+not(grover_circ, 2; control_lanes = [model_lanes(grover_circ)[2:3]])
+not(grover_circ, target_lanes(grover_circ)[2]; control_lanes = target_lanes(grover_circ)[1])
 
 #main_circ = compile_circuit(grover_circ, inv = false)
 out, main_circ, grov = auto_compute(grover_circ, [[(false, nothing), (false, true)], [(true, nothing), (true, false)]])
