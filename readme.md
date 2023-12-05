@@ -16,7 +16,7 @@ The GroverCircuitBuilder module in Julia automates the creation of quantum circu
 
 ### Basic Setup and Module import
 
-Include this code at the beginning on your script. This will automatically import all necessary modules.
+Include this code at the beginning of your script. This will automatically import all necessary modules.
 
 ```julia
 include("../Modules/SetupTool.jl")
@@ -229,7 +229,7 @@ Keep in mind that the last bit is our target lane, while the first two bits are 
 
 ### Model training
 
-Let's take create a model and train it on a simple dataset. We define the model as follows:
+Let's create a model and train it on a simple dataset. We define the model as follows:
 
 ```julia
 grover_circ = empty_circuit(1, 3)
@@ -263,7 +263,7 @@ Let's say we want the model to map `|0>` to `|1>` (at the target lane). Thus, we
 out, main_circuit, grover_iterations = auto_compute(grover_circ, [true])
 ```
 
-There parameter `[true]` specifies the desired `output value`. The function `auto_compute` will automatically compute the optimal number of Grover iterations and apply them to the circuit. Keep in mind that the `output values` have to match that specified number of `target lanes`. If you do not want a target lane to be trained on any specific value, you can insert `nothing` into the vector at the desired lane index. The function returns the quantum state after applying the circuit, the circuit without the amplitude amplification and the grover iterations as a circuit.
+The parameter `[true]` specifies the desired `output value`. The function `auto_compute` will automatically compute the optimal number of Grover iterations and apply them to the circuit. Keep in mind that the `output values` have to match that specified number of `target lanes`. If you do not want a target lane to be trained on any specific value, you can insert `nothing` into the vector at the desired lane index. The function returns the quantum state after applying the circuit, the circuit without the amplitude amplification and the grover iterations as a circuit.
 Executing this code should generate the following logs:
 
 ```
