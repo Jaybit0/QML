@@ -273,7 +273,7 @@ module GroverCircuitBuilder
         inserted_batch_lanes = Vector{Int}()
         for idx in 2:length(target_bits)
             for i in 1:length(target_lanes)
-                @info "Inserting batch-lane after lane number $((idx-1) * length(target_lanes) + i)"
+                @info "Inserting batch-lane after lane number $((idx-1) * length(target_lanes) + i - 1)"
                 insert_target_lane(circuit, (idx-1) * length(target_lanes) + i)
                 push!(inserted_batch_lanes, (idx-1) * length(target_lanes) + i)
             end
