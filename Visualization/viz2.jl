@@ -32,22 +32,14 @@ using Yao.EasyBuild, YaoPlots
 # ==========================
 
 # Initialize an empty circuit with 2 target lanes and 4 model lanes
-grover_circ = empty_circuit(2, 3)
+grover_circ = empty_circuit(2, 4)
 
-# Apply Hadamard gates on the model lanes
-hadamard(grover_circ, model_lanes(grover_circ))
-
-# Apply a Learned Rotation on the first target lane
-learned_rotation(grover_circ, target_lanes(grover_circ)[1], model_lanes(grover_circ))
-
-# Apply a controlled Not gate on the second target lane
-not(grover_circ, 2; control_lanes = [model_lanes(grover_circ)[1:2]])
-
-#main_circ = compile_circuit(grover_circ, inv = false)
-out, main_circ, grov = auto_compute(grover_circ, [[(true, false), (true, false)], [(false, true), (false, true)]])
+custom_block = chain(2, put(1 => Rz(pi)), put(2 => Rz(pi)))
+custom_block_inv = chain(2, put(2 => Rz(-pi)), put(1 => Rz(-pi)))
+yao_block(grover_circ, [1:2, 1:2], custom_block, custom_block_inv, control_lanes=[3:4, 5:6])
 
 # Visualize the main circuit
-vizcircuit(main_circ)
+vizcircuit(compile_circuit(grover_circ))
 
 #measured = out |> r->measure(r; nshots=1000)
 #plotmeasure(measured)
