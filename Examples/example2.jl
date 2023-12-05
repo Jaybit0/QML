@@ -34,8 +34,6 @@ using Yao.EasyBuild, YaoPlots
 # Initialize an empty circuit with 2 target lanes and 4 model lanes
 grover_circ = empty_circuit(2, 4)
 
-target_lanes = 1:2
-
 # Apply Hadamard Gates on the lanes 3 -> 6
 hadamard(grover_circ, 3:6)
 

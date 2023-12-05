@@ -231,10 +231,10 @@ plotmeasure(measured)
 Let's say we want the model to map `|0>` to `|1>` (at the target lane). Thus, we want to minimize the states where the `target lane` does not return `1` (the last bit in the graph above). We can do that using the `auto_compute` function.
 
 ```julia
-out, main_circuit, grover_iterations = auto_compute(grover_circ, 1, [true])
+out, main_circuit, grover_iterations = auto_compute(grover_circ, [true])
 ```
 
-There parameter `1` specifies the `target lane`, while `[true]` specifies the `target value`. The function `auto_compute` will automatically compute the optimal number of Grover iterations and apply them to the circuit. Keep in mind that the `target lanes` do not have to match that specified `target lanes` of the circuit. In this context, the `target lanes` are the lanes that should produce a certain output, the `target value`. The function returns the quantum state after applying the circuit, the circuit without the amplitude amplification and the grover iterations as a circuit.
+There parameter `[true]` specifies the desired `output value`. The function `auto_compute` will automatically compute the optimal number of Grover iterations and apply them to the circuit. Keep in mind that the `output values` have to match that specified number of `target lanes`. If you do not want a target lane to be trained on any specific value, you can insert `nothing` into the vector at the desired lane index. The function returns the quantum state after applying the circuit, the circuit without the amplitude amplification and the grover iterations as a circuit.
 Executing this code should generate the following logs:
 
 ```
@@ -299,7 +299,7 @@ vizcircuit(my_circuit)
 Now, let's train the model to return `|11>` at the `output lanes`. We can do that using the `auto_compute` function.
 
 ```julia
-out, main_circuit, grover_iterations = auto_compute(grover_circ, target_lanes(grover_circ), [true, true])
+out, main_circuit, grover_iterations = auto_compute(grover_circ, [true, true])
 ```
 
 Executing this code should generate the following logs:
@@ -329,5 +329,89 @@ vizcircuit(main_circuit)
 ![](imgs/model_training5.svg)
 
 When inspecting the `main_circuit`, we can observe that the circuit does not match the circuit we defined above. This is because if we add multiple `output values`, the module will automatically insert a `grover lane`, which is a lane that is controlled by all `output lanes`. This makes it possible to apply Grovers Algorithm only on the `grover lane`, as this lane is `|1>` if and only if all `output lanes` have the `output values`. Keep in mind that other changes to the `main_circuit` might occur when calling `auto_compute`, but these will not change the overall functionality of the circuit. If you are not sure what happened, please inspect the circuit to identify the differences.
+
+### Defining IO-mappings
+
+Let's take the [previous circuit](#model-training-with-multiple-target-values). Now, we want to specify a different mapping. Previously, we were only able to specify the `output values`, given the input state `|0>`. Now, we want to specify the `output values` given an input state `|1>`. We can do that using a list of Tuples. Each tuple contains the input state and the desired output values. Let's define the mapping as follows:
+
+```julia
+out, main_circ, grov = auto_compute(grover_circ, [(true, false), (true, false)])
+```
+
+Executing this code should generate the following logs:
+
+```
+[ Info: Simulating grover circuit...
+[ Info: Inserting grover-lane after lane number 2
+[ Info: Main circuit compiled
+[ Info: Evaluating main circuit...
+[ Info: Main circuit evaluated
+[ Info: Cumulative Pre-Probability: 0.08080582617584074
+[ Info: Angle towards orthogonal state: 0.2882383126101803
+[ Info: Angle towards orthogonal state (deg): 16.514838806535785
+[ Info: Optimal number of Grover iterations: 2
+[ Info: Actual optimum from formula: 2.2248222357575265
+[ Info: Compiling grover circuit...
+[ Info: Grover circuit compiled
+[ Info: Evaluating grover circuit...
+[ Info: Grover circuit evaluated
+[ Info: 
+[ Info: ======== RESULTS ========
+[ Info: =========================
+[ Info: 
+[ Info: Cumulative Probability (after 2x Grover): 0.9832964456500823
+[ Info: Predicted likelihood after 2x Grover: 0.9832964456500849
+```
+
+We can visualize the `main_circuit`:
+
+```julia
+vizcircuit(main_circ)
+```
+
+![](imgs/io_mapping1.svg)
+
+When comparing the circuit to the previous one, we can see that the `target lanes` have been inverted using a `Not` gate.
+
+Now, we do not care about the output of the first lane. We only want the second lane to be `|0>`. We can do that using the following mapping:
+
+```julia
+out, main_circ, grov = auto_compute(grover_circ, [(true, nothing), (true, false)])
+```
+
+Executing this code should generate the following logs:
+
+```
+[ Info: Simulating grover circuit...
+[ Info: Inserting grover-lane after lane number 2
+[ Info: Main circuit compiled
+[ Info: Evaluating main circuit...
+[ Info: Main circuit evaluated
+[ Info: Cumulative Pre-Probability: 0.24999999999999986
+[ Info: Angle towards orthogonal state: 0.5235987755982987
+[ Info: Angle towards orthogonal state (deg): 29.999999999999993
+[ Info: Optimal number of Grover iterations: 1
+[ Info: Actual optimum from formula: 1.0000000000000004
+[ Info: Compiling grover circuit...
+[ Info: Grover circuit compiled
+[ Info: Evaluating grover circuit...
+[ Info: Grover circuit evaluated
+[ Info: 
+[ Info: ======== RESULTS ========
+[ Info: =========================
+[ Info: 
+[ Info: Cumulative Probability (after 1x Grover): 0.9999999999999983
+[ Info: Predicted likelihood after 1x Grover: 1.0
+```
+
+We can visualize the `main_circuit`:
+
+```julia
+vizcircuit(main_circ)
+```
+
+![](imgs/io_mapping2.svg)
+
+When comparing the circuit to the previous one, we can see that the `oracle lane` is only controlled by the second `target lane`.
 
 ### Batch training
