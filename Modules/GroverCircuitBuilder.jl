@@ -634,9 +634,9 @@ module GroverCircuitBuilder
     function _compile_oracle_block(circuit::GroverCircuit, block::OracleBlock, meta::BlockMeta; inv::Bool = false)::Yao.YaoAPI.AbstractBlock
         circ_size = circuit_size(circuit)
         
-        if !_use_grover_lane(block.target_lanes)
-            return chain(circ_size) # return identity
-        end
+        #if !_use_grover_lane(block.target_lanes)
+        #    return chain(circ_size) # return identity
+        #end
 
         m_target_lanes = _map_lanes(circuit, meta.insertion_checkpoint, block.target_lanes)
 
