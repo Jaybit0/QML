@@ -40,7 +40,7 @@ not(grover_circ, 2; control_lanes = [model_lanes(grover_circ)[2:3]])
 not(grover_circ, target_lanes(grover_circ)[2]; control_lanes = target_lanes(grover_circ)[1])
 
 #main_circ = compile_circuit(grover_circ, inv = false)
-out, main_circ, grov = auto_compute(grover_circ, [[(false, nothing), (false, true)], [(true, nothing), (true, false)]])
+out, main_circ, grov = auto_compute(grover_circ, [[(false, nothing), (false, true)], [(true, nothing), (true, false)], [(false, nothing), (false, true)], [(true, nothing), (true, false)]])
 
 # Visualize the main circuit
 vizcircuit(main_circ)

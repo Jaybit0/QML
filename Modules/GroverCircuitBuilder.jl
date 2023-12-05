@@ -126,11 +126,14 @@ module GroverCircuitBuilder
 
         # We first create the main circuit to determine the probability of the target state
         main_circuit = compile_circuit(circuit)
+        @info "Main circuit compiled"
 
         # Gate the zero state through the main circuit
         out = nothing
         if evaluate
+            @info "Evaluating main circuit..."
             out = register |> main_circuit
+            @info "Main circuit evaluated"
         end
 
         # Prepare the oracle function. This function is a function that returns true if the 
@@ -142,7 +145,6 @@ module GroverCircuitBuilder
         if evaluate 
             cumulative_pre_probability = computeCumProb(out, oracle_function)
         else
-
             return nothing, main_circuit, createGroverCircuit(circ_size, isnothing(forced_grover_iterations) ? 1 : forced_grover_iterations, build_grover_iteration(circuit, oracle_lane, _use_grover_lane(target_lanes) ? true : target_bits[1]))
         end
 
@@ -182,11 +184,15 @@ module GroverCircuitBuilder
             actual_grover_iterations = 1
         end
 
+        @info "Compiling grover circuit..."
         # Create the grover circuit to amplify the amplitude
         grover_circuit = createGroverCircuit(circ_size, actual_grover_iterations, build_grover_iteration(circuit, oracle_lane, _use_grover_lane(target_lanes) ? true : target_bits[1]))
+        @info "Grover circuit compiled"
 
+        @info "Evaluating grover circuit..."
         # Gate the current quantum state through the grover circuit
         out = out |> grover_circuit
+        @info "Grover circuit evaluated"
 
         cum_prob = computeCumProb(out, oracle_function)
         pred_cum_prob = computePostGroverLikelihood(computeAngle(cumulative_pre_probability), actual_grover_iterations)
