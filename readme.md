@@ -163,13 +163,6 @@ custom_block_inv = chain(2, put(2 => Rz(-pi)), put(1 => Rz(-pi)))
 yao_block(grover_circ, [1:2, 1:2], custom_block, custom_block_inv, control_lanes=[3:4, 5:6])
 ```
 
-Let's visualize the circuit:
-
-```julia
-my_circuit = compile_circuit(grover_circ)
-vizcircuit(my_circuit)
-```
-
 ![](imgs/yao_block1.svg)
 
 The lane behavior is analogous to all other gates.
