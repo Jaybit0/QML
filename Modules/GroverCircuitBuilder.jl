@@ -291,30 +291,22 @@ module GroverCircuitBuilder
                 @info block
                 if block.is_model_function
                     # TODO: This should be reworked
-                    if isa(block, OracleBlock)
-                        block.target_lanes = _map_lanes(circuit, circuit.circuit_meta[idx].insertion_checkpoint, block.target_lanes)
-                        block.oracle_lane = _map_lanes(circuit, circuit.circuit_meta[idx].insertion_checkpoint, block.oracle_lane)
-                        circuit.circuit_meta[idx].insertion_checkpoint = circuit.current_checkpoint
+                    new_block = deepcopy(block)
+                
+                    new_block.target_lanes = _map_lanes(circuit, circuit.circuit_meta[idx].insertion_checkpoint, new_block.target_lanes)
+                    new_block.control_lanes = _map_lanes(circuit, circuit.circuit_meta[idx].insertion_checkpoint, new_block.control_lanes)
 
-                        append!(block.target_lanes, inserted_batch_lanes)
+                    # Trivially offset target lanes. 
+                    if isa(new_block, RotationBlock)
+                        new_block.target_lanes += (batch-1) * length(target_lanes)
                     else
-                        new_block = deepcopy(block)
-                    
-                        new_block.target_lanes = _map_lanes(circuit, circuit.circuit_meta[idx].insertion_checkpoint, new_block.target_lanes)
-                        new_block.control_lanes = _map_lanes(circuit, circuit.circuit_meta[idx].insertion_checkpoint, new_block.control_lanes)
-    
-                        # Trivially offset target lanes. 
-                        if isa(new_block, RotationBlock)
-                            new_block.target_lanes += (batch-1) * length(target_lanes)
-                        else
-                            new_block.target_lanes = map(x -> x + (batch-1) * length(target_lanes), new_block.target_lanes)
-                        end
-    
-                        insert!(circuit.circuit, idx+1, new_block)
-                        insert!(circuit.circuit_meta, idx+1, BlockMeta(circuit.current_checkpoint))
-                        idx += 1
-                        len += 1
+                        new_block.target_lanes = map(x -> x + (batch-1) * length(target_lanes), new_block.target_lanes)
                     end
+
+                    insert!(circuit.circuit, idx+1, new_block)
+                    insert!(circuit.circuit_meta, idx+1, BlockMeta(circuit.current_checkpoint))
+                    idx += 1
+                    len += 1
                 end
 
                 idx += 1
@@ -336,8 +328,6 @@ module GroverCircuitBuilder
 
         target_lanes = vcat(target_lanes, inserted_batch_lanes)
 
-        @info "Target lanes: $target_lanes"
-
         if isnothing(insert_lane_at)
             insert_lane_at = maximum(target_lanes) + 1
         end
@@ -345,8 +335,12 @@ module GroverCircuitBuilder
         @info "Inserting grover-lane after lane number $(insert_lane_at-1)"
         insert_target_lane(circuit, insert_lane_at)
         target_lanes = _map_lanes(circuit, circuit.current_checkpoint-1, target_lanes)
+
+        # Filter out nothing
+        filtered_lanes = [target_lanes[i] for (i, val) in enumerate(flattened_target_bits) if !isnothing(val)]
+        filtered_target_bits = filter(x -> !isnothing(x), flattened_target_bits)
         
-        push!(circuit.circuit, OracleBlock(insert_lane_at, target_lanes, flattened_target_bits, true))
+        push!(circuit.circuit, OracleBlock(insert_lane_at, filtered_lanes, filtered_target_bits, true))
         push!(circuit.circuit_meta, BlockMeta(circuit.current_checkpoint))
 
         return insert_lane_at

@@ -36,10 +36,10 @@ grover_circ = empty_circuit(2, 3)
 
 hadamard(grover_circ, model_lanes(grover_circ), false)
 learned_rotation(grover_circ, target_lanes(grover_circ)[1], model_lanes(grover_circ)[1:2], true)
-not(grover_circ, 2, true; control_lanes = [model_lanes(grover_circ)[3]])
+not(grover_circ, 2, true; control_lanes = [model_lanes(grover_circ)[2:3]])
 
 #main_circ = compile_circuit(grover_circ, inv = false)
-out, main_circ, grov = auto_compute(grover_circ, [[(false, true), (false, true)], [(true, false), (true, false)]])
+out, main_circ, grov = auto_compute(grover_circ, [[(false, nothing), (false, true)], [(true, nothing), (true, false)]])
 
 # Visualize the main circuit
 vizcircuit(main_circ)
