@@ -94,12 +94,17 @@ module GroverCircuitBuilder
         return circuit.model_lanes[:]
     end
 
-    function auto_compute(circuit::GroverCircuit, output_lanes::Union{AbstractRange, Vector{Int}, Int}, output_bits::Union{Vector, Bool}; forced_grover_iterations::Union{Int, Nothing} = nothing, ignore_errors::Bool = true, evaluate::Bool = true)::Tuple{Union{Yao.ArrayReg, Nothing}, Yao.YaoAPI.AbstractBlock, Yao.YaoAPI.AbstractBlock}
+    function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; forced_grover_iterations::Union{Int, Nothing} = nothing, ignore_errors::Bool = true, evaluate::Bool = true)::Tuple{Union{Yao.ArrayReg, Nothing}, Yao.YaoAPI.AbstractBlock, Yao.YaoAPI.AbstractBlock}
         @info "Simulating grover circuit..."
 
         # Map the corresponding types to Vector{Int}
-        target_lanes = _resolve_lanes(output_lanes)
+        #target_lanes = _resolve_lanes(output_lanes)
+        target_lanes = circuit.target_lanes
         target_bits = _resolve_output_bits(output_bits)
+
+        if length(target_bits) == 0
+            throw(DomainError(target_bits, "The number of output bits must be greater than 0"))
+        end
 
         for out_bits in target_bits
             if length(out_bits) != length(target_lanes)
@@ -257,9 +262,7 @@ module GroverCircuitBuilder
         target_lanes = _resolve_lanes(output_lanes)
         target_bits = _resolve_output_bits(output_bits)
 
-        if isnothing(insert_lane_at)
-            insert_lane_at = maximum(target_lanes) + 1
-        end
+        
 
         if circuit.preparation_state
             unprepare(circuit)
@@ -267,12 +270,7 @@ module GroverCircuitBuilder
 
         flattened_target_bits = _flatten_output_bits(target_bits)
 
-        @info "Inserting grover-lane after lane number $(insert_lane_at-1)"
-        insert_target_lane(circuit, insert_lane_at)
-        target_lanes = _map_lanes(circuit, circuit.current_checkpoint-1, target_lanes)
         
-        push!(circuit.circuit, OracleBlock(insert_lane_at, target_lanes, flattened_target_bits, true))
-        push!(circuit.circuit_meta, BlockMeta(circuit.current_checkpoint))
 
         # Extend target lanes to match batch-size
         inserted_batch_lanes = Vector{Int}()
@@ -335,6 +333,21 @@ module GroverCircuitBuilder
 
         pushfirst!(circuit.circuit, NotBlock(negate_output_lanes, nothing, false))
         pushfirst!(circuit.circuit_meta, BlockMeta(circuit.current_checkpoint))
+
+        target_lanes = vcat(target_lanes, inserted_batch_lanes)
+
+        @info "Target lanes: $target_lanes"
+
+        if isnothing(insert_lane_at)
+            insert_lane_at = maximum(target_lanes) + 1
+        end
+
+        @info "Inserting grover-lane after lane number $(insert_lane_at-1)"
+        insert_target_lane(circuit, insert_lane_at)
+        target_lanes = _map_lanes(circuit, circuit.current_checkpoint-1, target_lanes)
+        
+        push!(circuit.circuit, OracleBlock(insert_lane_at, target_lanes, flattened_target_bits, true))
+        push!(circuit.circuit_meta, BlockMeta(circuit.current_checkpoint))
 
         return insert_lane_at
     end
@@ -764,29 +777,26 @@ module GroverCircuitBuilder
         return product_state(num_qubits, value)
     end
 
-    function _resolve_output_bits(output_bits)::Vector{Vector{Tuple{Bool, Bool}}}
-        if isa(output_bits, Vector{Vector{Tuple{Bool, Bool}}})
+    function _resolve_output_bits(output_bits)::Vector{Vector{Tuple{Bool, Union{Bool, Nothing}}}}
+        if isa(output_bits, Vector{Vector{Tuple{Bool, Union{Bool, Nothing}}}})
             return output_bits
         end
-        if isa(output_bits, Vector{Vector{Bool}})
-            out = Vector{Vector{Tuple{Bool, Bool}}}()
-            for output in output_bits
-                push!(out, map(x -> (false, x), output))
+        
+
+        if isa(output_bits, Vector)
+            if isa(output_bits[1], Vector)
+                out = Vector{Vector{Tuple{Bool, Union{Bool, Nothing}}}}()
+                for output in output_bits
+                    push!(out, map(_try_map_output, output))
+                end
+                return out
             end
+            out = Vector{Vector{Tuple{Bool, Union{Bool, Nothing}}}}()
+            push!(out, map(_try_map_output, output_bits))
             return out
         end
 
-        if isa(output_bits, Vector{Bool})
-            out = Vector{Vector{Tuple{Bool, Bool}}}()
-            push!(out, map(x -> (false, x), output_bits))
-            return out
-        end
-
-        if isa(output_bits, Vector{Tuple{Bool, Bool}})
-            return [output_bits]
-        end
-
-        if isa(output_bits, Tuple{Bool, Bool})
+        if isa(output_bits, Tuple{Bool, Union{Bool, Nothing}})
             return [[output_bits]]
         end
 
@@ -797,7 +807,31 @@ module GroverCircuitBuilder
         throw(DomainError(output_bits, "The given output bits are not allowed!"))
     end
 
-    function _flatten_output_bits(output_bits::Vector{Vector{Tuple{Bool, Bool}}})::Vector{Bool}
+    function _try_map_output(output_bit)::Tuple{Bool, Union{Bool, Nothing}}
+        if isa(output_bit, Tuple{Bool, Union{Bool, Nothing}})
+            return output_bit
+        end
+
+        if isa(output_bit, Tuple{Bool, Bool})
+            return (output_bit[1], output_bit[2])
+        end
+
+        if isa(output_bit, Union{Bool, Nothing})
+            return (false, output_bit)
+        end
+
+        if isa(output_bit, Bool)
+            return (false, output_bit)
+        end
+
+        if isnothing(output_bit)
+            return (false, nothing)
+        end
+
+        throw(DomainError(output_bit, "The given output bit is not allowed!"))
+    end
+
+    function _flatten_output_bits(output_bits::Vector{Vector{Tuple{Bool, Union{Bool, Nothing}}}})::Vector{Union{Bool, Nothing}}
         return reduce(vcat, map(inner_vec -> map(x -> x[2], inner_vec), output_bits))
     end
 end
