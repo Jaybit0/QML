@@ -58,6 +58,20 @@ where the first argument is the total number of `target lanes` and the second ar
 
 You can build circuits using the modules integrated functions. A circuit is built sequentially, meaning that new gates are added to the end of the circuit. For all examples, we assume to have `2` `target lanes` and `4` `model lanes` as in the [previous example](#creating-a-circuit).
 
+Although these examples show you how to directly access lanes via lane indices, we recommend using the functions
+
+```julia
+target_lanes(grover_circ)
+```
+
+and 
+
+```julia
+model_lanes(grover_circ)
+```
+
+to access the correct lane indices. This will ensure that the correct lanes are accessed, even if you change the order of the lanes.
+
 #### Hadamard gates
 
 You can apply Hadamard gates using the function `hadamard`.
@@ -460,3 +474,6 @@ vizcircuit(main_circ)
 When comparing the circuit to the previous one, we can see that the `target lanes` have been duplicated, the first two being inverted as we specified the input mapping `|11>` at the first batch. Note that the module automatically identifies relevant gates and duplicates and shifts them accordingly.
 
 Keep in mind that batch training is in the early stages of development and might not work as expected in some cases.
+
+
+### Lane manipulation
