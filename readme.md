@@ -160,7 +160,7 @@ Keep in mind that the sequence order is reversed for the inverse gate. Only use 
 ```julia
 custom_block = chain(2, put(1 => Rz(pi)), put(2 => Rz(pi)))
 custom_block_inv = chain(2, put(2 => Rz(-pi)), put(1 => Rz(-pi)))
-yao_block(grover_circ, 1:2, custom_block, custom_block_inv, control_lanes=3:6)
+yao_block(grover_circ, [1:2, 1:2], custom_block, custom_block_inv, control_lanes=[3:4, 5:6])
 ```
 
 Let's visualize the circuit:
