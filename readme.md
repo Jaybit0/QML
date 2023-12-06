@@ -191,10 +191,11 @@ vizcircuit(my_circuit)
 
 ### Visualize measurements
 
-You can visualize the measurements of a circuit using the function `plotmeasure`.
+You can visualize the measurements of a circuit using the function `plotmeasure`. Let's assume we have a circuit with a total of `6` lanes. We want to measure all lanes after applying our circuit for `1000` shots. We can do that using the following code:
 
 ```julia
-plotmeasure(my_circuit)
+measurements = zero_state(6) |> my_circuit |> r->measure(r; nshots=1000)
+plotmeasure(measurements)
 ```
 
 For example, let's measure a learned rotation after applying Hadamard gates on the `model lanes`.
