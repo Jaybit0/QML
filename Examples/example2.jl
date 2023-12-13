@@ -38,7 +38,10 @@ grover_circ = empty_circuit(2, 4)
 hadamard(grover_circ, 3:6)
 
 # Apply 3 controlled rotations on the first lane with a granularity of pi/4 (max_rotation_rad / 2^length(control_lanes))
-learned_rotation(grover_circ, 1, 3:5)
+block, meta = learned_rotation(grover_circ, 1, 3:5)
+meta.data["batch"] = 1
+meta.data["lane"] = 1
+meta.manipulator(block, meta, inv) = meta.data["batch"] == 1
 # Apply 1 controlled rotation on the second lane with a granularity of pi (max_rotation_rad / 2^length(control_lanes))
 learned_rotation(grover_circ, 2, 6)
 

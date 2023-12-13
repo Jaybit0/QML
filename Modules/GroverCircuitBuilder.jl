@@ -32,6 +32,16 @@ module GroverCircuitBuilder
 
     mutable struct BlockMeta
         insertion_checkpoint::Int
+        data::Dict
+        manipulator::Union{Function, Nothing}
+    end
+
+    function BlockMeta(insertion_checkpoint::Int)::BlockMeta
+        return BlockMeta(insertion_checkpoint, Dict(), nothing)
+    end
+
+    function BlockMeta(insertion_checkpoint::Int, data::Dict)::BlockMeta
+        return BlockMeta(insertion_checkpoint, data, nothing)
     end
 
     mutable struct GroverCircuit
@@ -296,7 +306,11 @@ module GroverCircuitBuilder
                     new_block.control_lanes = m_control_lanes
 
                     insert!(circuit.circuit, idx+1, new_block)
-                    insert!(circuit.circuit_meta, idx+1, BlockMeta(circuit.current_checkpoint))
+                    new_meta = BlockMeta(circuit.current_checkpoint, copy(meta.data), meta.manipulator)
+                    if haskey(new_meta.data, "batch")
+                        new_meta.data["batch"] = batch
+                    end
+                    insert!(circuit.circuit_meta, idx+1, new_meta)
                     idx += 1
                     len += 1
                 end
@@ -383,6 +397,14 @@ module GroverCircuitBuilder
     end
 
     function compile_block(circuit::GroverCircuit, block::GroverBlock, meta::BlockMeta; inv::Bool = false)::Yao.YaoAPI.AbstractBlock
+        if !isnothing(meta.manipulator)
+            print("Manipulating block...")
+            if !meta.manipulator(block, meta, inv)
+                print("Skipping block...")
+                return chain(circuit_size(circuit))
+            end
+        end
+        
         if isa(block, RotationBlock)
             return _compile_rotation_block(circuit, block::RotationBlock, meta, inv=inv)
         elseif isa(block, HadamardBlock)
