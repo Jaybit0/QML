@@ -121,7 +121,8 @@ module GroverCircuitBuilder
 
         # If we use an additional grover-lane, we need to 
         # prepare the circuit by adding an oracle block (see function prepare(...))
-        if _use_grover_lane(target_lanes)
+        # TODO: Fix this check
+        if _use_grover_lane(target_lanes) || length(target_bits) > 1
             circuit = create_checkpoint(circuit)
             # Push the oracle block to the circuit
             oracle_lane = prepare(circuit, target_lanes, target_bits)
