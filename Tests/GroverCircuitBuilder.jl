@@ -35,4 +35,8 @@ using Test
         @test GroverCircuitBuilder._diffusion_gate_for_zero_function(2, 2, true) == chain(2, put(2 => Z))
         @test GroverCircuitBuilder._diffusion_gate_for_zero_function(2, 2, false) == chain(2, put(2 => X), put(2 => Z), put(2 => X))
     end
+
+    @testset "_convert_to_bools" begin
+        @test GroverCircuitBuilder._convert_to_bools(10, [1, 2, 3, 4]) == [true, false, false, true]
+    end
 end

@@ -695,6 +695,13 @@ module GroverCircuitBuilder
         return idx -> oracle(_convert_to_bools(idx, outRange))
     end
 
+    """
+        _convert_to_bools(index::Int, outRange::Vector{Int})::Vector{Bool}
+
+    Converts the given index substracted by 1 to a boolean array.
+    The index is assumed to be in the range of 0 to 2^length(outRange)-1.
+
+    """
     function _convert_to_bools(index::Int, outRange::Vector{Int})::Vector{Bool}
         out = falses(length(outRange))
         index -= 1 # To adjust the offset in the quantum register (state |0> = 1)
