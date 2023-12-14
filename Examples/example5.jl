@@ -34,13 +34,17 @@ using Yao.EasyBuild, YaoPlots
 distribution = [true, true, false, false]
 
 # Initialize an empty circuit with 2 target lanes and 4 model lanes
-grover_circ = empty_circuit(1, 4)
+grover_circ = empty_circuit(1, 0)
 
 # Apply Hadamard Gates on the lanes 3 -> 6
-hadamard(grover_circ, param_lanes(grover_circ))
+#hadamard(grover_circ, model_lanes(grover_circ))
 
 # Apply 3 controlled rotations on the first lane with a granularity of pi/4 (max_rotation_rad / 2^length(control_lanes))
-block, meta = learned_rotation(grover_circ, model_lanes(grover_circ)[1], param_lanes(grover_circ))
+#block = chain(1, put(1 => Ry(pi)))
+#inv_block = chain(1, put(1 => Ry(-pi)))
+#yao_block(grover_circ, target_lanes(grover_circ)[1], block, inv_block)
+block, meta = learned_rotation(grover_circ, model_lanes(grover_circ)[1], [])
+@info block
 #meta.data["lane"] = 1
 #meta.data["batch"] = 1
 #meta.manipulator = (block, meta, inv) -> distribution[meta.data["batch"]]
@@ -49,12 +53,14 @@ block, meta = learned_rotation(grover_circ, model_lanes(grover_circ)[1], param_l
 # As we use multiple target lanes, auto_compute automatically inserts a lane below the target lanes which encode the criterions to this lane
 # The reflection is done with respect to the inserted lane
 # As we have provided a wrong inverse, the process should fail and auto_compute should automatically identify the wrong inverse
-out, main_circ, grov = auto_compute(grover_circ, [[true], [true], [false], [false]])
+#out, main_circ, grov = auto_compute(grover_circ, [[true], [true], [false], [false]])
+circ = compile_circuit(grover_circ, inv = false)
 
 # Visualize the main circuit
-vizcircuit(main_circ)
+vizcircuit(circ)
 #vizcircuit(chain(6, put(1:6 => compile_block(grover_circ, yao, meta)), put(1:6 => compile_block(grover_circ, yao, meta; inv=true))))
 
 # Uncomment this to vizualize the measured results
-#measured = out |> r->measure(r; nshots=100000)
+#out = zero_state(1)
+#measured = out |> circ |> r->measure(r; nshots=100000)
 #plotmeasure(measured)

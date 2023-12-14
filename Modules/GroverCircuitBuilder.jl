@@ -11,13 +11,13 @@ module GroverCircuitBuilder
     export compile_circuit;
     export empty_circuit;
     export circuit_size;
-    export target_lanes;
     export model_lanes;
+    export param_lanes;
     export prepare;
     export unprepare;
     export create_checkpoint;
     export manipulate_lanes;
-    export insert_target_lane;
+    export insert_model_lane;
     export hadamard;
     export rotation;
     export learned_rotation;
@@ -45,8 +45,8 @@ module GroverCircuitBuilder
     end
 
     mutable struct GroverCircuit
-        target_lanes::Vector{Int}
         model_lanes::Vector{Int}
+        param_lanes::Vector{Int}
         circuit::Vector{<:GroverBlock}
         circuit_meta::Vector{BlockMeta}
         preparation_state::Bool
@@ -83,20 +83,20 @@ module GroverCircuitBuilder
         target_bits::Vector{Bool}
     end
 
-    function empty_circuit(target_lanes::Int, model_lanes::Int)::GroverCircuit
-        return GroverCircuit(collect(1:target_lanes), collect(target_lanes+1:target_lanes+model_lanes), Vector{GroverBlock}(), Vector{BlockMeta}(), false, 1, Vector{Function}())
+    function empty_circuit(model_lanes::Int, param_lanes::Int)::GroverCircuit
+        return GroverCircuit(collect(1:model_lanes), collect(model_lanes+1:model_lanes+param_lanes), Vector{GroverBlock}(), Vector{BlockMeta}(), false, 1, Vector{Function}())
     end
 
     function circuit_size(circuit::GroverCircuit)
-        return length(circuit.target_lanes) + length(circuit.model_lanes)
-    end
-
-    function target_lanes(circuit::GroverCircuit)::Vector{Int}
-        return circuit.target_lanes[:]
+        return length(circuit.model_lanes) + length(circuit.param_lanes)
     end
 
     function model_lanes(circuit::GroverCircuit)::Vector{Int}
         return circuit.model_lanes[:]
+    end
+
+    function param_lanes(circuit::GroverCircuit)::Vector{Int}
+        return circuit.param_lanes[:]
     end
 
     function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; forced_grover_iterations::Union{Int, Nothing} = nothing, ignore_errors::Bool = true, evaluate::Bool = true)::Tuple{Union{Yao.ArrayReg, Nothing}, Yao.YaoAPI.AbstractBlock, Yao.YaoAPI.AbstractBlock}
@@ -104,7 +104,7 @@ module GroverCircuitBuilder
 
         # Map the corresponding types to Vector{Int}
         #target_lanes = _resolve_lanes(output_lanes)
-        target_lanes = circuit.target_lanes
+        target_lanes = circuit.model_lanes
         target_bits = _resolve_output_bits(output_bits)
 
         if length(target_bits) == 0
@@ -270,9 +270,9 @@ module GroverCircuitBuilder
         end
     end
 
-    function prepare(circuit::GroverCircuit, output_lanes::Union{AbstractRange, Vector{Int}, Int}, output_bits::Union{Vector, Bool}; insert_lane_at::Union{Int, Nothing} = nothing)::Int
-        target_lanes = _resolve_lanes(output_lanes)
-        target_bits = _resolve_output_bits(output_bits)
+    function prepare(circuit::GroverCircuit, target_lanes::Union{AbstractRange, Vector{Int}, Int}, target_bits::Union{Vector, Bool}; insert_lane_at::Union{Int, Nothing} = nothing)::Int
+        target_lanes = _resolve_lanes(target_lanes)
+        target_bits = _resolve_output_bits(target_bits)
 
         if circuit.preparation_state
             unprepare(circuit)
@@ -285,7 +285,7 @@ module GroverCircuitBuilder
         for idx in 2:length(target_bits)
             for i in 1:length(target_lanes)
                 @info "Inserting batch-lane after lane number $((idx-1) * length(target_lanes) + i - 1)"
-                insert_target_lane(circuit, (idx-1) * length(target_lanes) + i)
+                insert_model_lane(circuit, (idx-1) * length(target_lanes) + i)
                 push!(inserted_batch_lanes, (idx-1) * length(target_lanes) + i)
             end
         end
@@ -342,7 +342,7 @@ module GroverCircuitBuilder
         end
 
         @info "Inserting grover-lane after lane number $(insert_lane_at-1)"
-        insert_target_lane(circuit, insert_lane_at)
+        insert_model_lane(circuit, insert_lane_at)
         target_lanes = _map_lanes(circuit, circuit.current_checkpoint-1, target_lanes)
 
         # Filter out nothing
@@ -360,25 +360,25 @@ module GroverCircuitBuilder
     end
 
     function manipulate_lanes(circuit::GroverCircuit, mapping::Function)
-        map!(mapping, circuit.target_lanes, circuit.target_lanes)
-        map!(mapping, circuit.model_lanes, circuit.target_lanes)
+        map!(mapping, circuit.model_lanes, circuit.model_lanes)
+        map!(mapping, circuit.param_lanes, circuit.param_lanes)
 
         push!(circuit.lane_manipulators, mapping)
         circuit.current_checkpoint += 1
     end
 
-    function insert_target_lane(circuit::GroverCircuit, location::Int)
+    function insert_model_lane(circuit::GroverCircuit, location::Int)
         if location < 1 || location > circuit_size(circuit)
             throw(DomainError(location, "Target location out of bounds (must be within lanes 1:" * string(circuit_size(circuit)) * ")"))
         end
         
         manipulate_lanes(circuit, x -> x >= location ? x + 1 : x)
-        push!(circuit.target_lanes, location)
+        push!(circuit.model_lanes, location)
     end
 
-    function build_grover_iteration(circuit::GroverCircuit, oracle_lane::Int, target_bit::Bool)::Yao.YaoAPI.AbstractBlock
+    function build_grover_iteration(circuit::GroverCircuit, target_lane::Int, target_bit::Bool)::Yao.YaoAPI.AbstractBlock
         circ_size = circuit_size(circuit)
-        diff_gate = _diffusion_gate_for_zero_function(circ_size, oracle_lane, target_bit)
+        diff_gate = _diffusion_gate_for_zero_function(circ_size, target_lane, target_bit)
         oracle = prepareOracleGate(circ_size, compile_circuit(circuit, inv=false), compile_circuit(circuit, inv=true))
         return createGroverIteration(circ_size, diff_gate, oracle)
     end
@@ -535,7 +535,8 @@ module GroverCircuitBuilder
         circ_size = circuit_size(circuit)
         
         if isnothing(block.control_lanes)
-            return chain(circ_size, put(_resolve_grover_lane(circuit, block.target_lanes) => Ry(inv ? -block.rotations[1] : block.rotations[1])))
+            #TODO: Is mapping correct?
+            return chain(circ_size, put(_map_lanes(circuit, meta.insertion_checkpoint, block.target_lanes) => Ry(inv ? -block.rotations[1] : block.rotations[1])))
         end
 
         m_circuit = chain(circ_size)
@@ -656,10 +657,6 @@ module GroverCircuitBuilder
 
     function _compile_oracle_block(circuit::GroverCircuit, block::OracleBlock, meta::BlockMeta; inv::Bool = false)::Yao.YaoAPI.AbstractBlock
         circ_size = circuit_size(circuit)
-        
-        #if !_use_grover_lane(block.target_lanes)
-        #    return chain(circ_size) # return identity
-        #end
 
         m_target_lanes = _map_lanes(circuit, meta.insertion_checkpoint, block.target_lanes)
 
@@ -679,6 +676,13 @@ module GroverCircuitBuilder
     # ===== HELPER FUNCTIONS =====
     # ============================
 
+    """
+        _diffusion_gate_for_zero_function(circuitSize::Int, target_lane::Int, target_bit::Bool)::Yao.YaoAPI.AbstractBlock)
+
+    Creates a diffusion gate for the given target lane and target bit. The diffusion gate is a gate that inverts the amplitude of the target state.
+    We assume that the input state is |0>.
+        
+    """
     function _diffusion_gate_for_zero_function(circuitSize::Int, target_lane::Int, target_bit::Bool)::Yao.YaoAPI.AbstractBlock
         if target_bit
             return chain(circuitSize, put(target_lane => Z))
@@ -704,7 +708,7 @@ module GroverCircuitBuilder
 
     function _oracle_function(target_lanes::Vector{Int}, target_bits::Vector{Bool})::Function
         f =  function(data)
-            for (idx, lane) in enumerate(target_lanes)
+            for (idx, _) in enumerate(target_lanes)
                 if target_bits[idx] != data[idx]
                     return false
                 end
@@ -716,14 +720,8 @@ module GroverCircuitBuilder
 
     function _map_lanes(circuit::GroverCircuit, checkpoint::Int, lanes::Vector{Int})::Vector{Int}
         for i in checkpoint:length(circuit.lane_manipulators)
-            #println("Mapping: ", i)
             lanes = map(circuit.lane_manipulators[i], lanes)
-            #println(lanes)
         end
-
-        #println("Grover:")
-        #lanes = _resolve_grover_lanes(circuit, lanes)
-        #println(lanes)
 
         return lanes
     end
@@ -852,7 +850,7 @@ module GroverCircuitBuilder
         return reduce(vcat, map(inner_vec -> map(x -> x[2], inner_vec), output_bits))
     end
 
-    function _check_for_batch_lanes(circuit::GroverCircuit, block::GroverBlock, meta::BlockMeta, target_lanes::Vector{Int}, batch::Int, inserted_batch_lanes::Vector{Int})::Tuple{Bool, Vector{Int}, Union{Vector{Vector{Int}}, Nothing}}
+    function _check_for_batch_lanes(circuit::GroverCircuit, block::GroverBlock, meta::BlockMeta, model_lanes::Vector{Int}, batch::Int, inserted_batch_lanes::Vector{Int})::Tuple{Bool, Vector{Int}, Union{Vector{Vector{Int}}, Nothing}}
         m_batch_lane = false
 
         m_target_lanes = _map_lanes(circuit, meta.insertion_checkpoint, block.target_lanes)
@@ -860,10 +858,10 @@ module GroverCircuitBuilder
 
         # Walk through individual target lanes and offset them if they are in a batch lane
         for (i, lane) in enumerate(m_target_lanes)
-            for (j, batch_lane) in enumerate(target_lanes)
+            for (j, batch_lane) in enumerate(model_lanes)
                 if lane == batch_lane
                     m_batch_lane = true
-                    m_target_lanes[i] = inserted_batch_lanes[(batch-2) * length(target_lanes) + j]
+                    m_target_lanes[i] = inserted_batch_lanes[(batch-2) * length(model_lanes) + j]
                 end
             end
         end
@@ -872,10 +870,10 @@ module GroverCircuitBuilder
         if !isnothing(block.control_lanes)
             for (i, ctrl) in enumerate(block.control_lanes)
                 for (i2, lane) in enumerate(ctrl)
-                    for (j, batch_lane) in enumerate(target_lanes)
+                    for (j, batch_lane) in enumerate(model_lanes)
                         if lane == batch_lane
                             m_batch_lane = true
-                            m_control_lanes[i][i2] = inserted_batch_lanes[(batch-2) * length(target_lanes) + j]
+                            m_control_lanes[i][i2] = inserted_batch_lanes[(batch-2) * length(model_lanes) + j]
                         end
                     end
                 end
