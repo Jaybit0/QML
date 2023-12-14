@@ -746,7 +746,7 @@ module GroverCircuitBuilder
         return length(target_lanes) > 1
     end
 
-    function _resolve_lanes(data::Union{AbstractRange, Vector{Int}, Int})::Vector{Int}
+    function _resolve_lanes(data::Union{AbstractRange, Vector, Int})::Vector{Int}
         if isa(data, Int)
             return [data]::Vector{Int}
         end
@@ -755,7 +755,11 @@ module GroverCircuitBuilder
             return collect(Int, data)
         end
 
-        return data
+        if typeof(data) <: Vector{Int}
+            return data
+        end
+
+        return Int.(data)
     end
 
     function _resolve_stacked_control_lanes(data::Union{Vector{Vector{Int}}, Vector{Int}, Vector, AbstractRange, Int, Nothing})::Union{Vector{Vector{Int}}, Nothing}

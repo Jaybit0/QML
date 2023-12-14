@@ -40,7 +40,7 @@ grover_circ = empty_circuit(1, 4)
 hadamard(grover_circ, model_lanes(grover_circ))
 
 # Apply 3 controlled rotations on the first lane with a granularity of pi/4 (max_rotation_rad / 2^length(control_lanes))
-block, meta = learned_rotation(grover_circ, 1, model_lanes(grover_circ))
+block, meta = learned_rotation(grover_circ, target_lanes(grover_circ)[1], model_lanes(grover_circ))
 #meta.data["lane"] = 1
 #meta.data["batch"] = 1
 #meta.manipulator = (block, meta, inv) -> distribution[meta.data["batch"]]
@@ -52,9 +52,9 @@ block, meta = learned_rotation(grover_circ, 1, model_lanes(grover_circ))
 out, main_circ, grov = auto_compute(grover_circ, [[true], [true], [false], [false]])
 
 # Visualize the main circuit
-#vizcircuit(main_circ)
+vizcircuit(main_circ)
 #vizcircuit(chain(6, put(1:6 => compile_block(grover_circ, yao, meta)), put(1:6 => compile_block(grover_circ, yao, meta; inv=true))))
 
 # Uncomment this to vizualize the measured results
-measured = out |> r->measure(r; nshots=100000)
-plotmeasure(measured)
+#measured = out |> r->measure(r; nshots=100000)
+#plotmeasure(measured)
