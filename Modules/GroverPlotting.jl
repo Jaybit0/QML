@@ -8,8 +8,12 @@ module GroverPlotting
     export plotmeasure
     export configureYaoPlots
 
-	function plotmeasure(x::Array{BitStr{n,Int},1}, st="#") where n
+	function plotmeasure(x::Array{BitStr{n,Int},1}; oracle_function::Function = nothing, st="#") where n
 		hist = fit(Histogram, Int.(x), 0:2^n)
+		colors = nothing
+		if !isnothing(oracle_function)
+			colors = [oracle_function(BitStr{n,Int}(i)) ? :red : :lightblue for i in 0:2^n-1]
+		end
 		x = 0
 		if(n<=3)
 			s=8
@@ -22,10 +26,12 @@ module GroverPlotting
 		elseif(n>15)
 			s=1
 		end
-		bar(hist.edges[1] .- 0.5, hist.weights, title = "Histogram", label="Found in "*string(st)*" tries", size=(600*(2^n)/s,400), ylims=(0, maximum(hist.weights)), xlims=(0, 2^n), grid=:false, ticks=false, border=:none, color=:lightblue, lc=:lightblue, foreground_color_legend = nothing, background_color_legend = nothing)
+
+		bar(hist.edges[1] .- 0.5, hist.weights, title = "Histogram", label="Found in "*string(st)*" tries", size=(600*(2^n)/s,400), ylims=(0, maximum(hist.weights)), xlims=(0, 2^n), grid=:false, ticks=false, border=:none, color=(isnothing(colors) ? (:lightblue) : colors), lc=:lightblue, foreground_color_legend = nothing, background_color_legend = nothing)
 		scatter!(0:2^n-1, ones(2^n,1), markersize=0, label=:none,
 		series_annotations="|" .* string.(hist.edges[1]; base=2, pad=n) .* "⟩")
 		scatter!(0:2^n-1, zeros(2^n,1) .+ maximum(hist.weights), markersize=0, label=:none, series_annotations=string.(hist.weights))
+
 	end
 
     function configureYaoPlots()

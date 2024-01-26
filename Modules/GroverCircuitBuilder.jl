@@ -124,12 +124,18 @@ module GroverCircuitBuilder
     - `forced_grover_iterations::Union{Int, Nothing}=nothing`: Enforces a specific number of grover iterations. Otherwise the optimal number of grover iterations will be applied if possible.
     - `ignore_errors:Bool=true`: Specifies if errors should be ignored or thrown. If errors are ignored and the optimal number of grover iterations could not be determined, the function will proceed with a single grover iteration. This is helpful if you still want to extract the grover-iteration even if no optimal number of iterations could be found.
     - `evaluate:Bool=true`: Specifies if the grover circuit should actually be simulated. This is necessary to determine the optimal number of grover iterations. However, it is only possible to simulate small circuits. If you only want to build a fixed number of grover iterations, it is not necessary to simulate the state. Thus, for larger circuits it is recommended to not simulate the circuit.
+
+    # Returns
+    A tuple containing the following elements:
+    - `out::Union{Yao.ArrayReg, Nothing}`: The register holding the state after applying the grover circuit if `evaluate == true`, else `nothing`
+    - `main_circuit::Yao.YaoAPI.AbstractBlock`: The main circuit that was specified using the grover circuit builder
+    - `grover_circuit::Yao.YaoAPI.AbstractBlock`: The generated grover circuit with either the optimal number of iterations, the number of `forced_grover_iterations` if not `nothing`, or a single iteration if `evaluate == false`
+    - `oracle_function::Function`: The function that returns `true` if and only if the corresponding state index is a target state
     """
-    function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; forced_grover_iterations::Union{Int, Nothing} = nothing, ignore_errors::Bool = true, evaluate::Bool = true)::Tuple{Union{Yao.ArrayReg, Nothing}, Yao.YaoAPI.AbstractBlock, Yao.YaoAPI.AbstractBlock}
+    function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; forced_grover_iterations::Union{Int, Nothing} = nothing, ignore_errors::Bool = true, evaluate::Bool = true)::Tuple{Union{Yao.ArrayReg, Nothing}, Yao.YaoAPI.AbstractBlock, Yao.YaoAPI.AbstractBlock, Function}
         @info "Simulating grover circuit..."
 
         # Map the corresponding types to Vector{Int}
-        #target_lanes = _resolve_lanes(output_lanes)
         target_lanes = circuit.model_lanes
         target_bits = _resolve_output_bits(output_bits)
 
@@ -174,15 +180,17 @@ module GroverCircuitBuilder
         end
 
         # Prepare the oracle function. This function is a function that returns true if the 
-        # index of the respective quantum state is the target state, else 0
-        # TODO: Simplify this by utilizing the grover lane
-        oracle_function = _wrap_oracle(_oracle_function([oracle_lane], [true]), [oracle_lane])
+        # index of the respective quantum state is the target state, else false
+        # TODO: Check correctness
+        oracle_function = idx -> ((2^(oracle_lane-1)) & (idx-1)) != 0
+        #oracle_function = _wrap_oracle(_oracle_function([oracle_lane], [true]), [oracle_lane])
+
         # Compute the probability of the target state after applying the main circuit
         cumulative_pre_probability = nothing 
         if evaluate 
             cumulative_pre_probability = computeCumProb(out, oracle_function)
         else
-            return nothing, main_circuit, createGroverCircuit(circ_size, isnothing(forced_grover_iterations) ? 1 : forced_grover_iterations, build_grover_iteration(circuit, oracle_lane, _use_grover_lane(target_lanes) ? true : target_bits[1][1][2]))
+            return nothing, main_circuit, createGroverCircuit(circ_size, isnothing(forced_grover_iterations) ? 1 : forced_grover_iterations, build_grover_iteration(circuit, oracle_lane, _use_grover_lane(target_lanes) ? true : target_bits[1][1][2])), oracle_function
         end
 
         @info "Cumulative Pre-Probability: $cumulative_pre_probability"
@@ -252,7 +260,7 @@ module GroverCircuitBuilder
             trace_inversion_problem(circuit)
         end
 
-        return out, main_circuit, grover_circuit
+        return out, main_circuit, grover_circuit, oracle_function
     end
 
     """

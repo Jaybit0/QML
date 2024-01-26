@@ -43,7 +43,7 @@ grover_circ = empty_circuit(1, 0)
 #block = chain(1, put(1 => Ry(pi)))
 #inv_block = chain(1, put(1 => Ry(-pi)))
 #yao_block(grover_circ, target_lanes(grover_circ)[1], block, inv_block)
-block, meta = learned_rotation(grover_circ, model_lanes(grover_circ)[1], [])
+block, meta = rotation(grover_circ, model_lanes(grover_circ)[1])
 @info block
 #meta.data["lane"] = 1
 #meta.data["batch"] = 1
@@ -53,7 +53,7 @@ block, meta = learned_rotation(grover_circ, model_lanes(grover_circ)[1], [])
 # As we use multiple target lanes, auto_compute automatically inserts a lane below the target lanes which encode the criterions to this lane
 # The reflection is done with respect to the inserted lane
 # As we have provided a wrong inverse, the process should fail and auto_compute should automatically identify the wrong inverse
-#out, main_circ, grov = auto_compute(grover_circ, [[true], [true], [false], [false]])
+# out, main_circ, grov = auto_compute(grover_circ, [[true], [true], [false], [false]])
 circ = compile_circuit(grover_circ, inv = false)
 
 # Visualize the main circuit
