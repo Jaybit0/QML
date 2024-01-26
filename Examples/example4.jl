@@ -49,7 +49,7 @@ block, meta = learned_rotation(grover_circ, model_lanes(grover_circ)[1], param_l
 # As we use multiple target lanes, auto_compute automatically inserts a lane below the target lanes which encode the criterions to this lane
 # The reflection is done with respect to the inserted lane
 # As we have provided a wrong inverse, the process should fail and auto_compute should automatically identify the wrong inverse
-out, main_circ, grov = auto_compute(grover_circ, [[true], [true], [false], [false]])
+out, main_circ, grov, oracle_function = auto_compute(grover_circ, [[true], [true], [false], [false]])
 
 # Visualize the main circuit
 vizcircuit(main_circ)
@@ -57,4 +57,4 @@ vizcircuit(main_circ)
 
 # Uncomment this to vizualize the measured results
 #measured = out |> r->measure(r; nshots=100000)
-#plotmeasure(measured)
+#plotmeasure(measured; oracle_function=oracle_function)
