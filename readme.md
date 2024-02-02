@@ -37,18 +37,18 @@ using Yao.EasyBuild, YaoPlots
 
 ### Model and parameter lanes
 
-In our module, we divide the circuit into two main components, the `model lanes` and the `target lanes`. This division should help organize the circuit. The `model lanes` are all lanes controlled by the model parameters. The `parameter lanes` represent the parameters of the model.
+In our module, we divide the circuit into two main components, the `parameter lanes` and the `model lanes`. This division should help organize the circuit. The `model lanes` are all lanes controlled by the model parameters. The `parameter lanes` represent the parameters of the model.
 
 By default, `model lanes` come before `parameter lanes`. If you want to apply any gate on a `parameter lane`, you can access the `n`-th `model lane` using the index `n`. If you want to access the `m`-th `parameter lane`, then you need to use the index `length(model lanes) + m`.
 
-Keep in mind that the division into `target` and `model` lanes is helpful, but not necessary. In general, you can create any circuit you want and everything should still work.
+Keep in mind that the division into `model` and `parameter` lanes is helpful, but not necessary. In general, you can create any circuit you want and everything should still work.
 
 ### Creating a circuit
 
 You can create a new circuit by:
 
 ```julia
-# Initialize an empty circuit with 2 target lanes and 4 model lanes
+# Initialize an empty circuit with 2 model lanes and 4 parameter lanes
 grover_circ = empty_circuit(2, 4)
 ```
 
@@ -58,7 +58,7 @@ where the first argument is the total number of `model lanes` and the second arg
 
 You can build circuits using the modules integrated functions. A circuit is built sequentially, meaning that new gates are added to the end of the circuit. For all examples, we assume to have `2` `model lanes` and `4` `parameter lanes` as in the [previous example](#creating-a-circuit).
 
-When referencing circuits, we recommend avoiding absolute indices. Instead, you can access all `target lane`- and `model lane` indices using the functions
+When referencing circuits, we recommend avoiding absolute indices. Instead, you can access all `model lane`- and `parameter lane` indices using the functions
 
 ```julia
 model_lanes(grover_circ)
@@ -225,7 +225,7 @@ plotmeasure(measurements)
 
 ![vm2](imgs/visualize_measurements2.svg)
 
-Keep in mind that the last bit is our target lane, while the first two bits are our model lanes.
+Keep in mind that the last bit is our model lane, while the first two bits are our parameter lanes.
 
 ### Model training
 
@@ -281,7 +281,7 @@ Executing this code should generate the following logs:
 [ Info: Predicted likelihood after 4x Grover: 0.9997955370807381
 ```
 
-As displayed in the logs, we could increase the probability of measuring a `1` at the target lane from `0.588` to `0.999` by applying `4` Grover iterations. 
+As displayed in the logs, we could increase the probability of measuring a `1` at the model lane from `0.588` to `0.999` by applying `4` Grover iterations. 
 
 When executing the function `auto_compute`, there are three outputs:
 - `out`: The quantum state after applying the circuit including the amplitude amplification
@@ -297,7 +297,7 @@ plotmeasure(measured)
 
 ![](imgs/model_training3.svg)
 
-As we can see, the probability of measuring a `1` at the target lane is now much higher than before.
+As we can see, the probability of measuring a `1` at the model lane is now much higher than before.
 
 ### Model training with multiple model lanes
 
@@ -309,10 +309,10 @@ grover_circ = empty_circuit(2, 3)
 # Apply Hadamard gates on the model lanes
 hadamard(grover_circ, param_lanes(grover_circ))
 
-# Apply a Learned Rotation on the first target lane
+# Apply a Learned Rotation on the first model lane
 learned_rotation(grover_circ, model_lanes(grover_circ)[1], param_lanes(grover_circ))
 
-# Apply a controlled Not gate on the second target lane
+# Apply a controlled Not gate on the second model lane
 not(grover_circ, 2; control_lanes = [param_lanes(grover_circ)[1:2]])
 ```
 
