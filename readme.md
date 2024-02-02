@@ -35,11 +35,11 @@ using Yao
 using Yao.EasyBuild, YaoPlots
 ```
 
-### Target and model lanes
+### Model and parameter lanes
 
-In our module, we divide the circuit into two main components, the `target lanes` and the `model lanes`. This division should help organize the circuit. The `target lanes` should contain all lanes that are controlled by model parameters. The `model lanes` are the parameters of the model.
+In our module, we divide the circuit into two main components, the `model lanes` and the `target lanes`. This division should help organize the circuit. The `model lanes` are all lanes controlled by the model parameters. The `parameter lanes` represent the parameters of the model.
 
-By default, `target lanes` come before `model lanes`. If you want to apply any gate on a `target lane`, you can access the `n`-th `target lane` using the index `n`. If you want to access the `m`-th `model lane`, then you need to use the index `length(target lanes) + m`.
+By default, `model lanes` come before `parameter lanes`. If you want to apply any gate on a `parameter lane`, you can access the `n`-th `model lane` using the index `n`. If you want to access the `m`-th `parameter lane`, then you need to use the index `length(model lanes) + m`.
 
 Keep in mind that the division into `target` and `model` lanes is helpful, but not necessary. In general, you can create any circuit you want and everything should still work.
 
@@ -52,66 +52,66 @@ You can create a new circuit by:
 grover_circ = empty_circuit(2, 4)
 ```
 
-where the first argument is the total number of `target lanes` and the second argument is the total number of `model lanes`.
+where the first argument is the total number of `model lanes` and the second argument is the total number of `parameter lanes`.
 
 ### Building a circuit
 
-You can build circuits using the modules integrated functions. A circuit is built sequentially, meaning that new gates are added to the end of the circuit. For all examples, we assume to have `2` `target lanes` and `4` `model lanes` as in the [previous example](#creating-a-circuit).
+You can build circuits using the modules integrated functions. A circuit is built sequentially, meaning that new gates are added to the end of the circuit. For all examples, we assume to have `2` `model lanes` and `4` `parameter lanes` as in the [previous example](#creating-a-circuit).
 
-Although these examples show you how to directly access lanes via lane indices, we recommend using the functions
-
-```julia
-target_lanes(grover_circ)
-```
-
-and 
+When referencing circuits, we recommend avoiding absolute indices. Instead, you can access all `target lane`- and `model lane` indices using the functions
 
 ```julia
 model_lanes(grover_circ)
 ```
 
-to access the correct lane indices. This will ensure that the correct lanes are accessed, even if you change the order of the lanes.
+and 
+
+```julia
+param_lanes(grover_circ)
+```
+
+This will ensure that the correct lanes are accessed, even if you change the order of the lanes.
 
 #### Hadamard gates
 
 You can apply Hadamard gates using the function `hadamard`.
 
 ```julia
-hadamard(grover_circ, 3)
+hadamard(grover_circ, model_lanes(grover_circ)[3])
 ```
 
-Assuming we have an empty circuit, this will add a Hadamard gate to the `3`-rd `lane`.
+Assuming we have an empty circuit, this will add a Hadamard gate to the `3`-rd `model lane`.
 
 ![h1](imgs/hadamard1.svg)
 
 We can also apply Hadamard gates to multiple `lanes` at once, using either
 
 ```julia
-hadamard(grover_circ, 1:3)
+hadamard(grover_circ, model_lanes(grover_circ)[1:3])
 ```
 
 or
 
 ```julia
-hadamard(grover_circ, [1, 2, 3])
+hadamard(grover_circ, [model_lanes(grover_circ)[1], model_lanes(grover_circ)[2], model_lanes(grover_circ)[3]])
 ```
 
-This will add a Hadamard gate to the `1`-st, `2`-nd and `3`-rd `lane`.
+This will add a Hadamard gate to the `1`-st, `2`-nd and `3`-rd `model lane`.
 
 ![h2](imgs/hadamard2.svg)
 
 You can also add controlled Hadamard gates by specifing the `control lanes`
 
 ```julia
-hadamard(grover_circ, 1, control_lanes = 2)
+hadamard(grover_circ, model_lanes(grover_circ)[1], control_lanes = param_lanes(grover_circ)[1])
 ```
 
 ![h3](imgs/hadamard3.svg)
 
-Each hadamard gate can be controlled by multiple `control lanes`
+Each hadamard gate can be controlled by multiple `control lanes` (usually `parameter lanes`)
 
 ```julia
-hadamard(grover_circ, 1, control_lanes = [2:3])
+hadamard(grover_circ, model_lanes(grover_circ)[1], control_lanes = param_lanes(grover_circ)[2:3])
 ```
 
 ![h4](imgs/hadamard4.svg)
@@ -119,7 +119,7 @@ hadamard(grover_circ, 1, control_lanes = [2:3])
 You can also specify multiple controlled Hadamard gates at once
 
 ```julia
-hadamard(grover_circ, 1:2, control_lanes = [3, 4:6])
+hadamard(grover_circ, model_lanes(grover_circ)[1:2], control_lanes = [param_lanes(grover_circ)[1], param_lanes(grover_circ)[2:4]])
 ```
 
 ![h5](imgs/hadamard5.svg)
@@ -129,7 +129,7 @@ hadamard(grover_circ, 1:2, control_lanes = [3, 4:6])
 You can apply Not gates using the function `not`.
 
 ```julia
-not(grover_circ, 3)
+not(grover_circ, model_lanes(grover_circ)[3])
 ```
 
 ![n1](imgs/not1.svg)
@@ -137,7 +137,7 @@ not(grover_circ, 3)
 You can also apply multiple Not gates, as well as controlled Not gates, in the same way as for [Hadamard gates](#hadamard-gates).
 
 ```julia
-not(grover_circ, 1:2, control_lanes = [3, 4:6])
+not(grover_circ, model_lanes(grover_circ)[1:2], control_lanes = [param_lanes(grover_circ)[1], param_lanes(grover_circ)[2:4]])
 ```
 
 ![n2](imgs/not2.svg)
@@ -147,7 +147,7 @@ not(grover_circ, 1:2, control_lanes = [3, 4:6])
 Learned rotations are granular rotations that can be learned by a classical optimizer. The granularity of such a `learned rotation` is dependent on the number of control lanes. In general, we can learn $2^n$ individual rotations where $n$ is the number of control lanes. This function is implemented as `learned_rotation`.
 
 ```julia
-learned_rotation(grover_circ, 1, 3:6)
+learned_rotation(grover_circ, model_lanes(grover_circ)[1], param_lanes(grover_circ)[3:6])
 ```
 
 ![lr1](imgs/learned_rotation1.svg)
@@ -257,13 +257,13 @@ plotmeasure(measured)
 
 ![](imgs/model_training2.svg)
 
-Let's say we want the model to map `|0>` to `|1>` (at the target lane). Thus, we want to minimize the states where the `target lane` does not return `1` (the last bit in the graph above). We can do that using the `auto_compute` function.
+Let's say we want the model to map `|0>` to `|1>` (at the model lane). Thus, we want to minimize the states where the `model lane` does not return `1` (the last bit in the graph above). We can do that using the `auto_compute` function.
 
 ```julia
 out, main_circuit, grover_iterations = auto_compute(grover_circ, [true])
 ```
 
-The parameter `[true]` specifies the desired `output value`. The function `auto_compute` will automatically compute the optimal number of Grover iterations and apply them to the circuit. Keep in mind that the `output values` have to match that specified number of `target lanes`. If you do not want a target lane to be trained on any specific value, you can insert `nothing` into the vector at the desired lane index. The function returns the quantum state after applying the circuit, the circuit without the amplitude amplification and the grover iterations as a circuit.
+The parameter `[true]` specifies the desired `output value`. The function `auto_compute` will automatically compute the optimal number of Grover iterations and apply them to the circuit. Keep in mind that the `output values` have to match that specified number of `model lanes`. If you do not want a model lane to be trained on any specific value, you can insert `nothing` into the vector at the desired lane index. The function returns the quantum state after applying the circuit, the circuit without the amplitude amplification and the grover iterations as a circuit.
 Executing this code should generate the following logs:
 
 ```
@@ -299,7 +299,7 @@ plotmeasure(measured)
 
 As we can see, the probability of measuring a `1` at the target lane is now much higher than before.
 
-### Model training with multiple target values
+### Model training with multiple model lanes
 
 We can also train a model that returns multiple target values. Let's define another model that has a two-bit output. Let's define the model as follows:
 
@@ -307,13 +307,13 @@ We can also train a model that returns multiple target values. Let's define anot
 grover_circ = empty_circuit(2, 3)
 
 # Apply Hadamard gates on the model lanes
-hadamard(grover_circ, model_lanes(grover_circ))
+hadamard(grover_circ, param_lanes(grover_circ))
 
 # Apply a Learned Rotation on the first target lane
-learned_rotation(grover_circ, target_lanes(grover_circ)[1], model_lanes(grover_circ))
+learned_rotation(grover_circ, model_lanes(grover_circ)[1], param_lanes(grover_circ))
 
 # Apply a controlled Not gate on the second target lane
-not(grover_circ, 2; control_lanes = [model_lanes(grover_circ)[1:2]])
+not(grover_circ, 2; control_lanes = [param_lanes(grover_circ)[1:2]])
 ```
 
 We can visualize the circuit:
@@ -400,7 +400,7 @@ vizcircuit(main_circ)
 
 ![](imgs/io_mapping1.svg)
 
-When comparing the circuit to the previous one, we can see that the `target lanes` have been inverted using a `Not` gate.
+When comparing the circuit to the previous one, we can see that the `model lanes` have been inverted using a `Not` gate.
 
 Now, we do not care about the output of the first lane. We only want the second lane to be `|0>`. We can do that using the following mapping:
 
@@ -441,7 +441,7 @@ vizcircuit(main_circ)
 
 ![](imgs/io_mapping2.svg)
 
-When comparing the circuit to the previous one, we can see that the `oracle lane` is only controlled by the second `target lane`.
+When comparing the circuit to the previous one, we can see that the `oracle lane` is only controlled by the second `model lane`.
 
 ### Batch training
 
@@ -486,7 +486,7 @@ vizcircuit(main_circ)
 
 ![](imgs/batch_training1.svg)
 
-When comparing the circuit to the previous one, we can see that the `target lanes` have been duplicated, the first two being inverted as we specified the input mapping `|11>` at the first batch. Note that the module automatically identifies relevant gates and duplicates and shifts them accordingly.
+When comparing the circuit to the previous one, we can see that the `model lanes` have been duplicated, the first two being inverted as we specified the input mapping `|11>` at the first batch. Note that the module automatically identifies relevant gates and duplicates and shifts them accordingly.
 
 Keep in mind that batch training is in the early stages of development and might not work as expected in some cases.
 

@@ -27,7 +27,6 @@ module GroverCircuitBuilder
     export build_grover_iteration;
     export auto_compute;
     export trace_inversion_problem;
-    export _resolve_output_bits;
     
     abstract type GroverBlock end
 
@@ -181,7 +180,6 @@ module GroverCircuitBuilder
 
         # Prepare the oracle function. This function is a function that returns true if the 
         # index of the respective quantum state is the target state, else false
-        # TODO: Check correctness
         oracle_function = idx -> ((2^(oracle_lane-1)) & (idx-1)) != 0
         #oracle_function = _wrap_oracle(_oracle_function([oracle_lane], [true]), [oracle_lane])
 
