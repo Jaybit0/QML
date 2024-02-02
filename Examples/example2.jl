@@ -59,4 +59,4 @@ out, main_circ, grov, oracle_function = auto_compute(grover_circ, criterion, eva
 
 # Uncomment this to vizualize the measured results
 measured = out |> r->measure(r; nshots=100000)
-plotmeasure(measured; oracle_function=oracle_function)
+plotmeasure(measured; oracle_function=oracle_function, sort=true, num_entries=10)
