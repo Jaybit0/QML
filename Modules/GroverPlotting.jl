@@ -8,7 +8,7 @@ module GroverPlotting
     export plotmeasure
     export configureYaoPlots
 
-	function plotmeasure(x::Array{BitStr{n,Int},1}; oracle_function::Function = nothing, st="#", sort=false, num_entries=nothing) where n
+	function plotmeasure(x::Array{BitStr{n,Int},1}; oracle_function::Union{Function, Nothing} = nothing, st="#", sort=false, num_entries=nothing) where n
 		xInt = Int.(x)
 		hist = fit(Histogram, xInt, 0:2^n)
 		sorted_indices = nothing
@@ -37,17 +37,10 @@ module GroverPlotting
 			s=1
 		end
 
-		@info hist.edges[1]
-		@info hist.edges[1][begin:num_entries]
-		@info num_entries
-		@info length(hist.edges[1])
-		@info length(hist.weights)
-
-
 		bar(hist.edges[1][begin:num_entries], hist.weights[sorted_indices[begin:num_entries]], title = "Histogram", label="Found in "*string(st)*" tries", size=(600*(num_entries)/s,400), ylims=(0, maximum(hist.weights)), xlims=(-0.5, num_entries-0.5), grid=:false, ticks=false, border=:none, color=(isnothing(colors) ? (:lightblue) : colors[begin:num_entries]), lc=:lightblue, foreground_color_legend = nothing, background_color_legend = nothing)
 		scatter!(0:num_entries-1, ones(num_entries,1), markersize=0, label=:none,
-			series_annotations="|" .* string.(hist.edges[1][sorted_indices][begin:num_entries]; base=2, pad=n) .* "⟩")
-		scatter!(0:num_entries-1, zeros(num_entries,1) .+ maximum(hist.weights), markersize=0, label=:none, series_annotations=string.(hist.weights[sorted_indices][begin:num_entries]))
+			series_annotations="|" .* string.(hist.edges[1][sorted_indices[begin:num_entries]]; base=2, pad=n) .* "⟩")
+		scatter!(0:num_entries-1, zeros(num_entries,1) .+ maximum(hist.weights), markersize=0, label=:none, series_annotations=string.(hist.weights[sorted_indices[begin:num_entries]]))
 
 	end
 
