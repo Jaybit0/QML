@@ -8,8 +8,9 @@ module GroverPlotting
     export plotmeasure
     export configureYaoPlots
 
-	function plotmeasure(x::Array{BitStr{n,Int},1}; oracle_function::Union{Function, Nothing} = nothing, st="#", sort=false, num_entries=nothing) where n
+	function plotmeasure(x::Array{BitStr{n,Int},1}; oracle_function::Union{Function, Nothing} = nothing, sort=false, num_entries=nothing) where n
 		xInt = Int.(x)
+		st = length(xInt)
 		hist = fit(Histogram, xInt, 0:2^n)
 		sorted_indices = nothing
 		if isnothing(num_entries)

@@ -16,7 +16,7 @@ The GroverCircuitBuilder module in Julia automates the creation of quantum circu
 
 ### Basic Setup and Module import
 
-Include this code at the beginning of your script. This will automatically import all necessary modules.
+Include this code at the beginning of your script. This will automatically import all necessary modules. Note that these are relative paths and might need to be changed according to your file structure.
 
 ```julia
 include("../Modules/SetupTool.jl")
@@ -227,6 +227,31 @@ plotmeasure(measurements)
 
 Keep in mind that the last bit is our model lane, while the first two bits are our parameter lanes.
 
+We provided some optional arguments to make the plot easier to understand. For instance, we can provide an oracle_function to highlight the desired output states. Let's say we want to highlight the first three bars:
+
+```julia
+plotmeasure(measurements; oracle_function=i -> i==1||i==5)
+```
+
+![vmopt1](imgs/visualize_measurement_opt1.svg)
+
+Keep in mind that the first quantum state `|000>` is represented by the index `1` (and not `0`).
+We can also sort the plot regarding the most appearing states:
+
+```julia
+plotmeasure(measurements; oracle_function=i -> i==1||i==5, sort=true)
+```
+
+![vmopt1](imgs/visualize_measurement_opt2.svg)
+
+We can also limit the number of entries that are displayed. This setting usually makes sense when plotting a sorted histogram to get the `n` top quantum states.
+
+```julia
+plotmeasure(measurements; oracle_function=i -> i==1||i==5, sort=true, num_entries=5)
+```
+
+![vmopt1](imgs/visualize_measurement_opt3.svg)
+
 ### Model training
 
 Let's create a model and train it on a simple dataset. We define the model as follows:
@@ -234,9 +259,9 @@ Let's create a model and train it on a simple dataset. We define the model as fo
 ```julia
 grover_circ = empty_circuit(1, 3)
 
-hadamard(grover_circ, 2:4)
-learned_rotation(grover_circ, 1, 2:4)
-not(grover_circ, 1; control_lanes = [2:3])
+hadamard(grover_circ, param_lanes(grover_circ)[1:3])
+learned_rotation(grover_circ, model_lanes(grover_circ)[1], param_lanes(grover_circ)[1:3])
+not(grover_circ, model_lanes(grover_circ)[1]; control_lanes = [param_lanes(grover_circ)[1:2]])
 ```
 
 We can visualize the circuit:
@@ -248,11 +273,13 @@ vizcircuit(my_circuit)
 
 ![](imgs/model_training1.svg)
 
-Let's have a look at the measurements without training the model:
+Let's have a look at the measurements without training the model. Note that we use the `auto_compute` function to obtain the corresponding oracle function to highlight the desired states.
 
 ```julia
+_, my_circuit, _, oracle_function = auto_compute(grover_circ, [true]; evaluate = false, forced_grover_iterations = 0)
+
 measured = zero_state(4) |> my_circuit |> r->measure(r; nshots=1000)
-plotmeasure(measured)
+plotmeasure(measured; oracle_function=oracle_function)
 ```
 
 ![](imgs/model_training2.svg)
@@ -260,7 +287,7 @@ plotmeasure(measured)
 Let's say we want the model to map `|0>` to `|1>` (at the model lane). Thus, we want to minimize the states where the `model lane` does not return `1` (the last bit in the graph above). We can do that using the `auto_compute` function.
 
 ```julia
-out, main_circuit, grover_iterations = auto_compute(grover_circ, [true])
+out, main_circuit, grover_iterations, oracle_function = auto_compute(grover_circ, [true])
 ```
 
 The parameter `[true]` specifies the desired `output value`. The function `auto_compute` will automatically compute the optimal number of Grover iterations and apply them to the circuit. Keep in mind that the `output values` have to match that specified number of `model lanes`. If you do not want a model lane to be trained on any specific value, you can insert `nothing` into the vector at the desired lane index. The function returns the quantum state after applying the circuit, the circuit without the amplitude amplification and the grover iterations as a circuit.
@@ -268,11 +295,18 @@ Executing this code should generate the following logs:
 
 ```
 [ Info: Simulating grover circuit...
+[ Info: Main circuit compiled
+[ Info: Evaluating main circuit...
+[ Info: Main circuit evaluated
 [ Info: Cumulative Pre-Probability: 0.588388347648318
 [ Info: Angle towards orthogonal state: 0.8742534638200038
 [ Info: Angle towards orthogonal state (deg): 50.091033701579434
 [ Info: Optimal number of Grover iterations: 4
 [ Info: Actual optimum from formula: 0.39836437131823643
+[ Info: Compiling grover circuit...
+[ Info: Grover circuit compiled
+[ Info: Evaluating grover circuit...
+[ Info: Grover circuit evaluated
 [ Info: 
 [ Info: ======== RESULTS ========
 [ Info: =========================
@@ -283,16 +317,17 @@ Executing this code should generate the following logs:
 
 As displayed in the logs, we could increase the probability of measuring a `1` at the model lane from `0.588` to `0.999` by applying `4` Grover iterations. 
 
-When executing the function `auto_compute`, there are three outputs:
+When executing the function `auto_compute`, there are four outputs:
 - `out`: The quantum state after applying the circuit including the amplitude amplification
 - `main_circuit`: The compiled circuit without the amplitude amplification
 - `grover_iterations`: The `4` grover iterations as a circuit
+- `oracle_function`: A function that returns true if the given quantum state (as an Int) is a desired output
 
 We can visualize the measured states using `1000` different measurements:
 
 ```julia
 measured = out |> r->measure(r; nshots=1000)
-plotmeasure(measured)
+plotmeasure(measured; oracle_function=oracle_function)
 ```
 
 ![](imgs/model_training3.svg)
@@ -328,7 +363,7 @@ vizcircuit(my_circuit)
 Now, let's train the model to return `|11>` at the `output lanes`. We can do that using the `auto_compute` function.
 
 ```julia
-out, main_circuit, grover_iterations = auto_compute(grover_circ, [true, true])
+out, main_circuit, grover_iterations, oracle_function = auto_compute(grover_circ, [true, true])
 ```
 
 Executing this code should generate the following logs:
@@ -336,11 +371,18 @@ Executing this code should generate the following logs:
 ```
 [ Info: Simulating grover circuit...
 [ Info: Inserting grover-lane after lane number 2
+[ Info: Main circuit compiled
+[ Info: Evaluating main circuit...
+[ Info: Main circuit evaluated
 [ Info: Cumulative Pre-Probability: 0.08080582617584074
 [ Info: Angle towards orthogonal state: 0.2882383126101803
 [ Info: Angle towards orthogonal state (deg): 16.514838806535785
 [ Info: Optimal number of Grover iterations: 2
 [ Info: Actual optimum from formula: 2.2248222357575265
+[ Info: Compiling grover circuit...
+[ Info: Grover circuit compiled
+[ Info: Evaluating grover circuit...
+[ Info: Grover circuit evaluated
 [ Info: 
 [ Info: ======== RESULTS ========
 [ Info: =========================
@@ -364,7 +406,7 @@ When inspecting the `main_circuit`, we can observe that the circuit does not mat
 Let's take the [previous circuit](#model-training-with-multiple-target-values). Now, we want to specify a different mapping. Previously, we were only able to specify the `output values`, given the input state `|0>`. Now, we want to specify the `output values` given an input state `|1>`. We can do that using a list of Tuples. Each tuple contains the input state and the desired output values. Let's define the mapping as follows:
 
 ```julia
-out, main_circ, grov = auto_compute(grover_circ, [(true, false), (true, false)])
+out, main_circ, grov, oracle_function = auto_compute(grover_circ, [(true, false), (true, false)])
 ```
 
 Executing this code should generate the following logs:
@@ -448,7 +490,7 @@ When comparing the circuit to the previous one, we can see that the `oracle lane
 Our module also supports batch training. Let's take the [previous circuit](#model-training-with-multiple-target-values). Now, we want to train the model to return `|00>` if we input `|11>`, and `|11>` if we input `|00>`. We can do that using the `auto_compute` function.
 
 ```julia
-out, main_circ, grov = auto_compute(grover_circ, [[(true, false), (true, false)], [(false, true), (false, true)]])
+out, main_circ, grov, oracle_lane = auto_compute(grover_circ, [[(true, false), (true, false)], [(false, true), (false, true)]])
 ```
 
 Executing this code should generate the following logs:
@@ -490,5 +532,41 @@ When comparing the circuit to the previous one, we can see that the `model lanes
 
 Keep in mind that batch training is in the early stages of development and might not work as expected in some cases.
 
+
+### Conditional exclusion of blocks
+
+When applying a batch training circuit, all blocks are copied from the first batch lanes to the other ones.
+Sometimes, you might want to exclude blocks depending on the batch. We provided some advanced functionality to achieve this behaviour.
+
+```julia
+# Initialize an empty circuit with 2 model lanes and 4 parameter lanes
+grover_circ = empty_circuit(2, 4)
+
+# Apply Hadamard Gates on the lanes 3 -> 6
+hadamard(grover_circ, 3:6)
+
+# Apply 3 controlled rotations on the first lane with a granularity of pi/4 (max_rotation_rad / 2^length(control_lanes))
+block, meta = learned_rotation(grover_circ, 1, 3:5)
+# We need to set 'batch' to 1, as only dynamically inserted batch lanes automatically get that property
+meta.data["batch"] = 1
+meta.manipulator = (block, meta, inv) -> meta.data["batch"] == 1
+# Apply 1 controlled rotation on the second lane with a granularity of pi (max_rotation_rad / 2^length(control_lanes))
+learned_rotation(grover_circ, 2, 6)
+
+# Apply a controlled negation to the second lane
+not(grover_circ, 2; control_lanes = 1)
+
+# We expect the first lane to return true and the second lane to return false
+# As we use multiple target lanes, auto_compute automatically inserts a lane below the target lanes which encode the criterions to this lane
+# The reflection is done with respect to the inserted lane
+criterion = [[true, true], [false, false]]
+out, main_circ, grov, oracle_function = auto_compute(grover_circ, criterion, evaluate = true)
+
+vizcircuit(main_circ)
+```
+
+![](imgs/batch_training2.svg)
+
+As can be observed, the learned rotation block does only appear on batch `1`.
 
 ### Lane manipulation

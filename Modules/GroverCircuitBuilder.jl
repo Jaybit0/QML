@@ -348,9 +348,7 @@ module GroverCircuitBuilder
 
                     insert!(circuit.circuit, idx+1, new_block)
                     new_meta = BlockMeta(circuit.current_checkpoint, copy(meta.data), meta.manipulator)
-                    if haskey(new_meta.data, "batch")
-                        new_meta.data["batch"] = batch
-                    end
+                    new_meta.data["batch"] = batch
                     insert!(circuit.circuit_meta, idx+1, new_meta)
                     idx += 1
                     len += 1
@@ -472,9 +470,9 @@ module GroverCircuitBuilder
     """
     function compile_block(circuit::GroverCircuit, block::GroverBlock, meta::BlockMeta; inv::Bool = false)::Yao.YaoAPI.AbstractBlock
         if !isnothing(meta.manipulator)
-            print("Manipulating block...")
+            @debug "Manipulating block..."
             if !meta.manipulator(block, meta, inv)
-                print("Skipping block...")
+                @debug "Skipping block..."
                 return chain(circuit_size(circuit))
             end
         end
