@@ -1,32 +1,22 @@
 # ======== IMPORTS ========
 # =========================
 
-# Setup virtual environment as it doesn't work for me locally otherwise
-# These three lines of code must be executed before anything else, even imports
 include("../Modules/SetupTool.jl")
 
 using .SetupTool
-
-setupPackages(false, update_registry = false)
-
-using Revise
-
-Revise.includet("../Modules/GroverML.jl")
+if setupPackages(false, update_registry = false)
+    include("../Modules/GroverML.jl")
+    include("../Modules/GroverCircuitBuilder.jl")
+    include("../Modules/GroverPlotting.jl")
+end
 
 using .GroverML
-
-Revise.includet("../Modules/GroverCircuitBuilder.jl")
-
 using .GroverCircuitBuilder
-
-Revise.includet("../Modules/GroverPlotting.jl")
-
 using .GroverPlotting
-
-configureYaoPlots()
-
 using Yao
 using Yao.EasyBuild, YaoPlots
+
+configureYaoPlots()
 
 # ========== CODE ==========
 # ==========================
