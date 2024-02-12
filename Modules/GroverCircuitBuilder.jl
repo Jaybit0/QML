@@ -479,9 +479,6 @@ module GroverCircuitBuilder
         
         manipulate_lanes(circuit, x -> x >= location ? x + 1 : x)
         push!(circuit.model_lanes, location)
-        @info "INSERT"
-        @info circuit.model_lanes
-        @info circuit.param_lanes
     end
 
     """
