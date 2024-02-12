@@ -161,6 +161,8 @@ module GroverCircuitBuilder
             oracle_lane = prepare(circuit, target_lanes, target_bits)
 
             target_lanes = _map_lanes(circuit, circuit.current_checkpoint-1, target_lanes)
+        else
+            oracle_lane = prepare(circuit, target_lanes, target_bits)
         end
 
         circ_size = circuit_size(circuit)
@@ -351,12 +353,6 @@ module GroverCircuitBuilder
                 meta = circuit.circuit_meta[idx]
 
                 is_model_function, m_target_lanes, m_control_lanes = _check_for_batch_lanes(circuit, block, meta, target_lanes, batch, inserted_batch_lanes)
-                @info "Batch $(batch)"
-                @info "Block: $(block)"
-                @info "Meta: $(meta)"
-                @info is_model_function
-                @info m_target_lanes
-                @info m_control_lanes
 
                 if is_model_function
                     new_block = deepcopy(block)
@@ -393,21 +389,34 @@ module GroverCircuitBuilder
 
         target_lanes = vcat(target_lanes, inserted_batch_lanes)
 
-        if isnothing(insert_lane_at)
-            insert_lane_at = maximum(target_lanes) + 1
+        if length(target_lanes) > 1
+            if isnothing(insert_lane_at)
+                insert_lane_at = maximum(target_lanes) + 1
+            end
+
+            @info "Inserting grover-lane after lane number $(insert_lane_at-1)"
+
+            insert_model_lane(circuit, insert_lane_at)
+            target_lanes = _map_lanes(circuit, circuit.current_checkpoint-1, target_lanes)
+
+            # Filter out nothing
+            filtered_lanes = [target_lanes[i] for (i, val) in enumerate(flattened_target_bits) if !isnothing(val)]
+            filtered_target_bits = filter(x -> !isnothing(x), flattened_target_bits)
+            
+            push!(circuit.circuit, OracleBlock(insert_lane_at, filtered_lanes, filtered_target_bits))
+            push!(circuit.circuit_meta, BlockMeta(circuit.current_checkpoint))
+        else
+            insert_lane_at = target_lanes[1]
+
+            if isnothing(target_bits[1][1][2])
+                throw(DomainError("Single target bit cannot be nothing!"))
+            end
+
+            if !target_bits[1][1][2]
+                # Then we need to inject a NOT block
+                not(circuit, target_lanes)
+            end
         end
-
-        @info "Inserting grover-lane after lane number $(insert_lane_at-1)"
-        insert_model_lane(circuit, insert_lane_at)
-        target_lanes = _map_lanes(circuit, circuit.current_checkpoint-1, target_lanes)
-
-        # Filter out nothing
-        filtered_lanes = [target_lanes[i] for (i, val) in enumerate(flattened_target_bits) if !isnothing(val)]
-        filtered_target_bits = filter(x -> !isnothing(x), flattened_target_bits)
-        
-        push!(circuit.circuit, OracleBlock(insert_lane_at, filtered_lanes, filtered_target_bits))
-        push!(circuit.circuit_meta, BlockMeta(circuit.current_checkpoint))
-        @info "Inserted lane at: $(insert_lane_at)"
 
         return insert_lane_at
     end

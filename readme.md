@@ -687,7 +687,10 @@ Now, we have the two compiled machine learning circuits that can be again chaine
 Let's chain them together such that the last parameter of circuit 2 is the model lane of circuit 1.
 
 ```julia
-stacked_learning_circuits = chain(7, put(1:4 => entire_circuit), put(4:7 => entire_circuit2))
+final_grover_circ = empty_circuit(1, 6)
+
+stacked_learning_circuits = chain(7, put(4:7 => entire_circuit), put(1:4 => entire_circuit2))
+yao_block(final_grover_circ, [1:7], stacked_learning_circuits, chain(7))
 ```
 
 Keep in mind that we assume in each machine learning circuit, that the input into all lanes is `|0>`. Circuits will not behave correctly if you input other values. Let's evaluate the entire circuit using our librarie's tools. Let's view our stacked learning circuit as a custom yao block without defining an inverse. We will overwrite the number of forced grover iterations to `0` as we do not want to create another grover circuit, but just evaluate the probabilities.
@@ -696,7 +699,7 @@ Keep in mind that we assume in each machine learning circuit, that the input int
 out, _, _, oracle_function = auto_compute(final_grover_circ, [false]; evaluate = true, forced_grover_iterations = 0)
 ```
 
-We can observe that the probabilities are very high as expected. We plot the `10` most likely states.
+We can observe that the probabilities quite low, but still reasonable (`59%`). We plot the `10` most likely states.
 
 ```julia
 measured = out |> r->measure(r; nshots=100000)
