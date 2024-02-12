@@ -16,6 +16,7 @@ module GroverPlotting
 		if isnothing(num_entries)
 			num_entries = length(hist.weights)
 		end
+		num_entries = min(num_entries, length(hist.weights))
 		if sort
 			sorted_indices = sortperm(hist.weights, rev=true)
 		else

@@ -55,8 +55,8 @@ criterion = [true, true]
 out, main_circ, grov, oracle_function = auto_compute(grover_circ, criterion, evaluate = true)
 
 # Visualize the main circuit
-#vizcircuit(main_circ)
+vizcircuit(main_circ)
 
 # Uncomment this to vizualize the measured results
-measured = out |> r->measure(r; nshots=100000)
-plotmeasure(measured; oracle_function=oracle_function, sort=true, num_entries=10)
+#measured = out |> r->measure(r; nshots=100000)
+#plotmeasure(measured; oracle_function=oracle_function, sort=true, num_entries=10)

@@ -20,6 +20,7 @@ module GroverCircuitBuilder
     export insert_model_lane;
     export insert_param_lane;
     export swap_lanes;
+    export shift_lanes;
     export hadamard;
     export rotation;
     export learned_rotation;
@@ -447,15 +448,31 @@ module GroverCircuitBuilder
     end
 
     """
+    Shifts all lanes down the specified number of lanes. If negative, lanes are shifted up instead.
+    """
+    function shift_lanes(circuit::GroverCircuit, shift_down_n::Int)
+        if shift_down_n <= -circuit_size(circuit) || shift_down_n >= circuit_size(circuit)
+            throw(DomainError(shift_down_n, "The shift factor is too big / small. Cannot shift more lanes up / down than the circuit size $(circuit_size(circuit))."))
+        end
+
+        cur_size = circuit_size(circuit)
+
+        manipulate_lanes(circuit, x -> x + shift_down_n < 1 ? x + cur_size + shift_down_n : (x + shift_down_n > cur_size ? x + shift_down_n - cur_size : x + shift_down_n))
+    end
+
+    """
     Inserts a model-lane at a specific location. All lanes after this location will be shifted below this lane.
     """
     function insert_model_lane(circuit::GroverCircuit, location::Int)
-        if location < 1 || location > circuit_size(circuit)
+        if location < 1 || location > circuit_size(circuit) + 1
             throw(DomainError(location, "Target location out of bounds (must be within lanes 1:" * string(circuit_size(circuit)) * ")"))
         end
         
         manipulate_lanes(circuit, x -> x >= location ? x + 1 : x)
         push!(circuit.model_lanes, location)
+        @info "INSERT"
+        @info circuit.model_lanes
+        @info circuit.param_lanes
     end
 
     """
@@ -1011,11 +1028,6 @@ module GroverCircuitBuilder
 
         m_target_lanes = _map_lanes(circuit, meta.insertion_checkpoint, block.target_lanes)
         m_control_lanes = isnothing(block.control_lanes) ? nothing : _map_lanes(circuit, meta.insertion_checkpoint, block.control_lanes)
-
-        @info "m_target_lanes: $(m_target_lanes)"
-        @info "m_control_lanes: $(m_control_lanes)"
-        @info "model_lanes: $(model_lanes)"
-        @info "inserted_batch_lanes: $(inserted_batch_lanes)"
 
         # Walk through individual target lanes and offset them if they are in a batch lane
         for (i, lane) in enumerate(m_target_lanes)

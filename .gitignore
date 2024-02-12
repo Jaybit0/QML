@@ -25,3 +25,5 @@ Manifest.toml
 
 *.flag
 .vscode/
+
+env_prepared.flag

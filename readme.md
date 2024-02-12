@@ -570,3 +570,116 @@ vizcircuit(main_circ)
 As can be observed, the learned rotation blocks from lane `1` are not copied to batch `2` (lane `3`).
 
 ### Lane manipulation
+
+One weakness of Yao.jl is that you cannot rearrange lanes in later stages. This library provides functionality to permute
+lanes at any stage. It will keep track of permutation versioning and which blocks are affected. Let's say we have a simple circuit:
+
+```julia
+# Initialize an empty circuit with 1 model lane and 4 param lanes
+grover_circ = empty_circuit(1, 4)
+
+# Apply Hadamard Gates on the param lanes 1 -> 4
+hadamard(grover_circ, param_lanes(grover_circ)[1:4])
+
+# Apply 4 controlled rotations on the first lane with a granularity of pi/8 (max_rotation_rad / 2^length(control_lanes))
+block, meta = learned_rotation(grover_circ, model_lanes(grover_circ)[1], param_lanes(grover_circ)[1:4])
+```
+
+Now, let's visualize this circuit:
+
+```julia
+vizcircuit(compile_circuit(grover_circ))
+```
+
+![](imgs/lane_manipulation1.svg)
+
+However, we want to rearrange the circuit such that model lane is at the bottom. We can do that using the `swap` function:
+
+```julia
+swap_lanes(grover_circ, model_lanes(grover_circ)[1], param_lanes(grover_circ)[4])
+```
+
+Let's visualize the circuit again:
+
+```julia
+vizcircuit(compile_circuit(grover_circ))
+```
+
+![](imgs/lane_manipulation2.svg)
+
+As we can see, now the two lanes have been swapped. Let's now shift all lanes one up instead of swapping, to make the control-lane arrangement more continuous:
+
+```julia
+shift_lanes(grover_circ, -1)
+vizcircuit(compile_circuit(grover_circ))
+```
+
+![](imgs/lane_manipulation3.svg)
+
+You can also apply custom permutations. However, ensure that these need to be fixed and should not query any functions in `grover_circ` when called as this may lead to unwanted bugs. Only use permutations if you know what you are doing. For instance, you could implement the lane-swapping behaviour like this:
+
+```julia
+manipulate_lanes(circuit, x -> x == first_lane ? second_lane : (x == second_lane ? first_lane : x))
+```
+
+### Stacking multiple Machine Learning circuits
+
+If you are interested in stacking multiple Machine Learning circuits created by this library, you can achieve this like in the following example. Let's again create this simple machine-learning circuit:
+
+```julia
+grover_circ = empty_circuit(1, 3)
+
+hadamard(grover_circ, param_lanes(grover_circ)[1:3])
+learned_rotation(grover_circ, model_lanes(grover_circ)[1], param_lanes(grover_circ)[1:3])
+not(grover_circ, model_lanes(grover_circ)[1]; control_lanes = [param_lanes(grover_circ)[1:2]])
+```
+
+![](imgs/circuit_stacking1.svg)
+
+Now, we train the model.
+
+```julia
+out, main_circ, grov, oracle_function = auto_compute(grover_circ, [false]; evaluate = false)
+```
+
+We now compile the main circuit and grover part into a single large circuit using the Yao `chain` functionality.
+
+```julia
+entire_circuit = chain(4, put(1:4 => main_circ), put(1:4 => grov))
+```
+
+Now let's do the same thing for our second machine learning circuit. For simplicity, we create the same circuit twice.
+
+```julia
+grover_circ2 = empty_circuit(1, 3)
+
+hadamard(grover_circ2, param_lanes(grover_circ2)[1:3])
+learned_rotation(grover_circ2, model_lanes(grover_circ2)[1], param_lanes(grover_circ2)[1:3])
+not(grover_circ2, model_lanes(grover_circ2)[1]; control_lanes = [param_lanes(grover_circ2)[1:2]])
+
+out2, main_circ2, grov2, oracle_function2 = auto_compute(grover_circ, [false]; evaluate = true)
+
+entire_circuit2 = chain(4, put(1:4 => main_circ2), put(1:4 => grov2))
+```
+
+Now, we have the two compiled machine learning circuits that can be again chained together using Yao.
+Let's chain them together such that the last parameter of circuit 2 is the model lane of circuit 1.
+
+```julia
+stacked_learning_circuits = chain(7, put(1:4 => entire_circuit), put(4:7 => entire_circuit2))
+```
+
+Keep in mind that we assume in each machine learning circuit, that the input into all lanes is `|0>`. Circuits will not behave correctly if you input other values. Let's evaluate the entire circuit using our librarie's tools. Let's view our stacked learning circuit as a custom yao block without defining an inverse. We will overwrite the number of forced grover iterations to `0` as we do not want to create another grover circuit, but just evaluate the probabilities.
+
+```julia
+out, _, _, oracle_function = auto_compute(final_grover_circ, [false]; evaluate = true, forced_grover_iterations = 0)
+```
+
+We can observe that the probabilities are very high as expected. We plot the `10` most likely states.
+
+```julia
+measured = out |> r->measure(r; nshots=100000)
+plotmeasure(measured; oracle_function=oracle_function, sort=true, num_entries=10)
+```
+
+![](imgs/circuit_stacking2.svg)
