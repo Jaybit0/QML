@@ -660,7 +660,7 @@ not(grover_circ, model_lanes(grover_circ)[1]; control_lanes = [param_lanes(grove
 Now, we train the model.
 
 ```julia
-out, main_circ, grov, oracle_function = auto_compute(grover_circ, [false]; evaluate = false)
+out, main_circ, grov, oracle_function = auto_compute(grover_circ, [false]; evaluate = true)
 ```
 
 We now compile the main circuit and grover part into a single large circuit using the Yao `chain` functionality.
