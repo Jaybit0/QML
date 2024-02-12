@@ -19,6 +19,7 @@ module GroverCircuitBuilder
     export manipulate_lanes;
     export insert_model_lane;
     export insert_param_lane;
+    export swap_lanes;
     export hadamard;
     export rotation;
     export learned_rotation;
@@ -225,6 +226,14 @@ module GroverCircuitBuilder
             @warn "The actual number of grover iterations could not be determined"
             @warn "We will continue using 1 grover-iterations such that the circuit can still be extracted :)"
             actual_grover_iterations = 1
+        elseif actual_grover_iterations > 1e10
+            @warn ""
+            @warn "======== WARNING ========"
+            @warn "========================="
+            @warn ""
+            @warn "The actual number of grover iterations is too high (> 1e10)"
+            @warn "We will continue using 1 grover-iterations such that the circuit can still be extracted :)"
+            actual_grover_iterations = 1
         end
 
         @info "Compiling grover circuit..."
@@ -325,7 +334,9 @@ module GroverCircuitBuilder
         for idx in 2:length(target_bits)
             for i in 1:length(target_lanes)
                 @info "Inserting batch-lane after lane number $((idx-1) * length(target_lanes) + i - 1)"
+                @info "Target lanes: $(target_lanes)"
                 insert_model_lane(circuit, (idx-1) * length(target_lanes) + i)
+                map!(circuit.lane_manipulators[end], target_lanes, target_lanes)
                 push!(inserted_batch_lanes, (idx-1) * length(target_lanes) + i)
             end
         end
@@ -339,6 +350,12 @@ module GroverCircuitBuilder
                 meta = circuit.circuit_meta[idx]
 
                 is_model_function, m_target_lanes, m_control_lanes = _check_for_batch_lanes(circuit, block, meta, target_lanes, batch, inserted_batch_lanes)
+                @info "Batch $(batch)"
+                @info "Block: $(block)"
+                @info "Meta: $(meta)"
+                @info is_model_function
+                @info m_target_lanes
+                @info m_control_lanes
 
                 if is_model_function
                     new_block = deepcopy(block)
@@ -389,6 +406,7 @@ module GroverCircuitBuilder
         
         push!(circuit.circuit, OracleBlock(insert_lane_at, filtered_lanes, filtered_target_bits))
         push!(circuit.circuit_meta, BlockMeta(circuit.current_checkpoint))
+        @info "Inserted lane at: $(insert_lane_at)"
 
         return insert_lane_at
     end
@@ -412,6 +430,20 @@ module GroverCircuitBuilder
 
         push!(circuit.lane_manipulators, mapping)
         circuit.current_checkpoint += 1
+    end
+
+    """
+    Swaps the two lanes specified.
+    """
+    function swap_lanes(circuit::GroverCircuit, first_lane::Int, second_lane::Int)
+        if first_lane < 1 || first_lane > circuit_size(circuit)
+            throw(DomainError(first_lane, "The index of the first lane to swap is out of bounds (must be within lanes 1:" * string(circuit_size(circuit)) * ")"))
+        end
+        if second_lane < 1 || second_lane > circuit_size(circuit)
+            throw(DomainError(second_lane, "The index of the second lane to swap is out of bounds (must be within lanes 1:" * string(circuit_size(circuit)) * ")"))
+        end
+
+        manipulate_lanes(circuit, x -> x == first_lane ? second_lane : (x == second_lane ? first_lane : x))
     end
 
     """
@@ -980,6 +1012,11 @@ module GroverCircuitBuilder
         m_target_lanes = _map_lanes(circuit, meta.insertion_checkpoint, block.target_lanes)
         m_control_lanes = isnothing(block.control_lanes) ? nothing : _map_lanes(circuit, meta.insertion_checkpoint, block.control_lanes)
 
+        @info "m_target_lanes: $(m_target_lanes)"
+        @info "m_control_lanes: $(m_control_lanes)"
+        @info "model_lanes: $(model_lanes)"
+        @info "inserted_batch_lanes: $(inserted_batch_lanes)"
+
         # Walk through individual target lanes and offset them if they are in a batch lane
         for (i, lane) in enumerate(m_target_lanes)
             for (j, batch_lane) in enumerate(model_lanes)
@@ -992,7 +1029,7 @@ module GroverCircuitBuilder
 
         # Walk through individual control lanes and offset them if they are in a batch lane
         if !isnothing(block.control_lanes)
-            for (i, ctrl) in enumerate(block.control_lanes)
+            for (i, ctrl) in enumerate(_map_lanes(circuit, meta.insertion_checkpoint, block.control_lanes))
                 for (i2, lane) in enumerate(ctrl)
                     for (j, batch_lane) in enumerate(model_lanes)
                         if lane == batch_lane

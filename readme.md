@@ -567,6 +567,6 @@ vizcircuit(main_circ)
 
 ![](imgs/batch_training2.svg)
 
-As can be observed, the learned rotation block does only appear on batch `1`.
+As can be observed, the learned rotation blocks from lane `1` are not copied to batch `2` (lane `3`).
 
 ### Lane manipulation
