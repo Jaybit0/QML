@@ -20,6 +20,27 @@ Include this code at the beginning of your script. This will automatically impor
 
 ```julia
 include("../Modules/SetupTool.jl")
+
+using .SetupTool
+if setupPackages(false, update_registry = false)
+    include("../Modules/GroverML.jl")
+    include("../Modules/GroverCircuitBuilder.jl")
+    include("../Modules/GroverPlotting.jl")
+end
+
+using .GroverML
+using .GroverCircuitBuilder
+using .GroverPlotting
+using Yao
+using Yao.EasyBuild, YaoPlots
+
+configureYaoPlots()
+```
+
+If you experience any issues with the way modules are imported, you could use the code below as a workaround. However, then you will not be able to see module documentation.
+
+```julia
+include("../Modules/SetupTool.jl")
 using .SetupTool
 setupPackages(false, update_registry = false)
 using Revise

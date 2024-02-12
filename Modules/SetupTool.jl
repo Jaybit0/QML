@@ -19,8 +19,12 @@ module SetupTool
                     Pkg.build(req)
                 end
             end
+
             set_environment_flag()
+            return true
         end
+
+        return false
     end
 
     function checkInstallation(required)
