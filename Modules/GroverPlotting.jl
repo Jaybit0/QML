@@ -8,8 +8,24 @@ module GroverPlotting
     export plotmeasure
     export configureYaoPlots
 
-	function plotmeasure(x::Array{BitStr{n,Int},1}, st="#") where n
-		hist = fit(Histogram, Int.(x), 0:2^n)
+	function plotmeasure(x::Array{BitStr{n,Int},1}; oracle_function::Union{Function, Nothing} = nothing, sort=false, num_entries=nothing) where n
+		xInt = Int.(x)
+		st = length(xInt)
+		hist = fit(Histogram, xInt, 0:2^n)
+		sorted_indices = nothing
+		if isnothing(num_entries)
+			num_entries = length(hist.weights)
+		end
+		num_entries = min(num_entries, length(hist.weights))
+		if sort
+			sorted_indices = sortperm(hist.weights, rev=true)
+		else
+			sorted_indices = 1:length(xInt)
+		end 
+		colors = nothing
+		if !isnothing(oracle_function)
+			colors = [oracle_function(sorted_indices[i]) ? :red : :lightblue for i in 1:2^n]
+		end
 		x = 0
 		if(n<=3)
 			s=8
@@ -22,10 +38,12 @@ module GroverPlotting
 		elseif(n>15)
 			s=1
 		end
-		bar(hist.edges[1] .- 0.5, hist.weights, title = "Histogram", label="Found in "*string(st)*" tries", size=(600*(2^n)/s,400), ylims=(0, maximum(hist.weights)), xlims=(0, 2^n), grid=:false, ticks=false, border=:none, color=:lightblue, lc=:lightblue, foreground_color_legend = nothing, background_color_legend = nothing)
-		scatter!(0:2^n-1, ones(2^n,1), markersize=0, label=:none,
-		series_annotations="|" .* string.(hist.edges[1]; base=2, pad=n) .* "⟩")
-		scatter!(0:2^n-1, zeros(2^n,1) .+ maximum(hist.weights), markersize=0, label=:none, series_annotations=string.(hist.weights))
+
+		bar(hist.edges[1][begin:num_entries], hist.weights[sorted_indices[begin:num_entries]], title = "Histogram", label="Found in "*string(st)*" tries", size=(600*(num_entries)/s,400), ylims=(0, maximum(hist.weights)), xlims=(-0.5, num_entries-0.5), grid=:false, ticks=false, border=:none, color=(isnothing(colors) ? (:lightblue) : colors[begin:num_entries]), lc=:lightblue, foreground_color_legend = nothing, background_color_legend = nothing)
+		scatter!(0:num_entries-1, ones(num_entries,1), markersize=0, label=:none,
+			series_annotations="|" .* string.(hist.edges[1][sorted_indices[begin:num_entries]]; base=2, pad=n) .* "⟩")
+		scatter!(0:num_entries-1, zeros(num_entries,1) .+ maximum(hist.weights), markersize=0, label=:none, series_annotations=string.(hist.weights[sorted_indices[begin:num_entries]]))
+
 	end
 
     function configureYaoPlots()

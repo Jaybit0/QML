@@ -11,13 +11,16 @@ module GroverCircuitBuilder
     export compile_circuit;
     export empty_circuit;
     export circuit_size;
-    export target_lanes;
     export model_lanes;
+    export param_lanes;
     export prepare;
     export unprepare;
     export create_checkpoint;
     export manipulate_lanes;
-    export insert_target_lane;
+    export insert_model_lane;
+    export insert_param_lane;
+    export swap_lanes;
+    export shift_lanes;
     export hadamard;
     export rotation;
     export learned_rotation;
@@ -26,7 +29,6 @@ module GroverCircuitBuilder
     export build_grover_iteration;
     export auto_compute;
     export trace_inversion_problem;
-    export _resolve_output_bits;
     
     abstract type GroverBlock end
 
@@ -35,7 +37,7 @@ module GroverCircuitBuilder
         data::Dict
         manipulator::Union{Function, Nothing}
     end
-
+    
     function BlockMeta(insertion_checkpoint::Int)::BlockMeta
         return BlockMeta(insertion_checkpoint, Dict(), nothing)
     end
@@ -45,8 +47,8 @@ module GroverCircuitBuilder
     end
 
     mutable struct GroverCircuit
-        target_lanes::Vector{Int}
         model_lanes::Vector{Int}
+        param_lanes::Vector{Int}
         circuit::Vector{<:GroverBlock}
         circuit_meta::Vector{BlockMeta}
         preparation_state::Bool
@@ -83,28 +85,59 @@ module GroverCircuitBuilder
         target_bits::Vector{Bool}
     end
 
-    function empty_circuit(target_lanes::Int, model_lanes::Int)::GroverCircuit
-        return GroverCircuit(collect(1:target_lanes), collect(target_lanes+1:target_lanes+model_lanes), Vector{GroverBlock}(), Vector{BlockMeta}(), false, 1, Vector{Function}())
+    """
+    Creates an empty circuit with the specified number of `model` and `param`-lanes.
+    """
+    function empty_circuit(model_lanes::Int, param_lanes::Int)::GroverCircuit
+        return GroverCircuit(collect(1:model_lanes), collect(model_lanes+1:model_lanes+param_lanes), Vector{GroverBlock}(), Vector{BlockMeta}(), false, 1, Vector{Function}())
     end
 
     function circuit_size(circuit::GroverCircuit)
-        return length(circuit.target_lanes) + length(circuit.model_lanes)
+        return length(circuit.model_lanes) + length(circuit.param_lanes)
     end
 
-    function target_lanes(circuit::GroverCircuit)::Vector{Int}
-        return circuit.target_lanes[:]
-    end
-
+    """
+    Returns a copy of all lane indices representing the model lanes.
+    If lanes have not been rearranged, these will be elements of the range `1:len(circuit.model_lanes)`.
+    """
     function model_lanes(circuit::GroverCircuit)::Vector{Int}
         return circuit.model_lanes[:]
     end
 
-    function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; forced_grover_iterations::Union{Int, Nothing} = nothing, ignore_errors::Bool = true, evaluate::Bool = true)::Tuple{Union{Yao.ArrayReg, Nothing}, Yao.YaoAPI.AbstractBlock, Yao.YaoAPI.AbstractBlock}
+    """
+    Returns a copy of all lane indices representing the parameter lanes.
+    If lanes have not been rearranged, these will be elements of the range `len(circuit.model_lanes)+1:circuit_size(circuit)`.
+    """
+    function param_lanes(circuit::GroverCircuit)::Vector{Int}
+        return circuit.param_lanes[:]
+    end
+
+    """
+    Automatically computes the grover-circuit to the given circuit.
+    The function returns a Tuple containing the final simulated register, 
+        the main circuit design without applying grover and the grover iterations.
+    
+    # Arguments
+    - `circuit::GroverCircuit`: The main circuit.
+    - `output_bits::Union{Vector, Bool}`: The output bits. This can either be a boolean value or a vector of booleans if you have more than one model lane. If you want to do batch-training, this should be a vector of output bits.
+
+    # Optional arguments
+    - `forced_grover_iterations::Union{Int, Nothing}=nothing`: Enforces a specific number of grover iterations. Otherwise the optimal number of grover iterations will be applied if possible.
+    - `ignore_errors:Bool=true`: Specifies if errors should be ignored or thrown. If errors are ignored and the optimal number of grover iterations could not be determined, the function will proceed with a single grover iteration. This is helpful if you still want to extract the grover-iteration even if no optimal number of iterations could be found.
+    - `evaluate:Bool=true`: Specifies if the grover circuit should actually be simulated. This is necessary to determine the optimal number of grover iterations. However, it is only possible to simulate small circuits. If you only want to build a fixed number of grover iterations, it is not necessary to simulate the state. Thus, for larger circuits it is recommended to not simulate the circuit.
+
+    # Returns
+    A tuple containing the following elements:
+    - `out::Union{Yao.ArrayReg, Nothing}`: The register holding the state after applying the grover circuit if `evaluate == true`, else `nothing`
+    - `main_circuit::Yao.YaoAPI.AbstractBlock`: The main circuit that was specified using the grover circuit builder
+    - `grover_circuit::Yao.YaoAPI.AbstractBlock`: The generated grover circuit with either the optimal number of iterations, the number of `forced_grover_iterations` if not `nothing`, or a single iteration if `evaluate == false`
+    - `oracle_function::Function`: The function that returns `true` if and only if the corresponding state index is a target state
+    """
+    function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; forced_grover_iterations::Union{Int, Nothing} = nothing, ignore_errors::Bool = true, evaluate::Bool = true)::Tuple{Union{Yao.ArrayReg, Nothing}, Yao.YaoAPI.AbstractBlock, Yao.YaoAPI.AbstractBlock, Function}
         @info "Simulating grover circuit..."
 
         # Map the corresponding types to Vector{Int}
-        #target_lanes = _resolve_lanes(output_lanes)
-        target_lanes = circuit.target_lanes
+        target_lanes = circuit.model_lanes
         target_bits = _resolve_output_bits(output_bits)
 
         if length(target_bits) == 0
@@ -148,15 +181,16 @@ module GroverCircuitBuilder
         end
 
         # Prepare the oracle function. This function is a function that returns true if the 
-        # index of the respective quantum state is the target state, else 0
-        # TODO: Simplify this by utilizing the grover lane
-        oracle_function = _wrap_oracle(_oracle_function([oracle_lane], [true]), [oracle_lane])
+        # index of the respective quantum state is the target state, else false
+        oracle_function = idx -> ((2^(oracle_lane-1)) & (idx-1)) != 0
+        #oracle_function = _wrap_oracle(_oracle_function([oracle_lane], [true]), [oracle_lane])
+
         # Compute the probability of the target state after applying the main circuit
         cumulative_pre_probability = nothing 
         if evaluate 
             cumulative_pre_probability = computeCumProb(out, oracle_function)
         else
-            return nothing, main_circuit, createGroverCircuit(circ_size, isnothing(forced_grover_iterations) ? 1 : forced_grover_iterations, build_grover_iteration(circuit, oracle_lane, _use_grover_lane(target_lanes) ? true : target_bits[1][1][2]))
+            return nothing, main_circuit, createGroverCircuit(circ_size, isnothing(forced_grover_iterations) ? 1 : forced_grover_iterations, build_grover_iteration(circuit, oracle_lane, _use_grover_lane(target_lanes) ? true : target_bits[1][1][2])), oracle_function
         end
 
         @info "Cumulative Pre-Probability: $cumulative_pre_probability"
@@ -193,6 +227,14 @@ module GroverCircuitBuilder
             @warn "The actual number of grover iterations could not be determined"
             @warn "We will continue using 1 grover-iterations such that the circuit can still be extracted :)"
             actual_grover_iterations = 1
+        elseif actual_grover_iterations > 1e10
+            @warn ""
+            @warn "======== WARNING ========"
+            @warn "========================="
+            @warn ""
+            @warn "The actual number of grover iterations is too high (> 1e10)"
+            @warn "We will continue using 1 grover-iterations such that the circuit can still be extracted :)"
+            actual_grover_iterations = 1
         end
 
         @info "Compiling grover circuit..."
@@ -226,9 +268,14 @@ module GroverCircuitBuilder
             trace_inversion_problem(circuit)
         end
 
-        return out, main_circuit, grover_circuit
+        return out, main_circuit, grover_circuit, oracle_function
     end
 
+    """
+    This function tries to identify and isolate errors in a grover circuit. It prints out the first GroverBlock where the composition of the block and its inverse is not the identity matrix.
+    If a circuit contains errors, the expected likelihood of the target state after a number of grover iterations is usually not equal to the simulated probability.
+    Such errors usually appear on custom yao blocks, if the inverse block has not been specified correctly.
+    """
     function trace_inversion_problem(circuit::GroverCircuit)
         @info ""
         @info "Trying to isolate the inversion problem..."
@@ -270,8 +317,11 @@ module GroverCircuitBuilder
         end
     end
 
-    function prepare(circuit::GroverCircuit, output_lanes::Union{AbstractRange, Vector{Int}, Int}, output_bits::Union{Vector, Bool}; insert_lane_at::Union{Int, Nothing} = nothing)::Int
-        target_lanes = _resolve_lanes(output_lanes)
+    """
+    Prepares a cricuit and inserts a target lane which is used as the oracle function.
+    """
+    function prepare(circuit::GroverCircuit, model_lanes::Union{AbstractRange, Vector{Int}, Int}, output_bits::Union{Vector, Bool}; insert_lane_at::Union{Int, Nothing} = nothing)::Int
+        target_lanes = _resolve_lanes(model_lanes)
         target_bits = _resolve_output_bits(output_bits)
 
         if circuit.preparation_state
@@ -285,7 +335,9 @@ module GroverCircuitBuilder
         for idx in 2:length(target_bits)
             for i in 1:length(target_lanes)
                 @info "Inserting batch-lane after lane number $((idx-1) * length(target_lanes) + i - 1)"
-                insert_target_lane(circuit, (idx-1) * length(target_lanes) + i)
+                @info "Target lanes: $(target_lanes)"
+                insert_model_lane(circuit, (idx-1) * length(target_lanes) + i)
+                map!(circuit.lane_manipulators[end], target_lanes, target_lanes)
                 push!(inserted_batch_lanes, (idx-1) * length(target_lanes) + i)
             end
         end
@@ -299,6 +351,12 @@ module GroverCircuitBuilder
                 meta = circuit.circuit_meta[idx]
 
                 is_model_function, m_target_lanes, m_control_lanes = _check_for_batch_lanes(circuit, block, meta, target_lanes, batch, inserted_batch_lanes)
+                @info "Batch $(batch)"
+                @info "Block: $(block)"
+                @info "Meta: $(meta)"
+                @info is_model_function
+                @info m_target_lanes
+                @info m_control_lanes
 
                 if is_model_function
                     new_block = deepcopy(block)
@@ -308,9 +366,7 @@ module GroverCircuitBuilder
 
                     insert!(circuit.circuit, idx+1, new_block)
                     new_meta = BlockMeta(circuit.current_checkpoint, copy(meta.data), meta.manipulator)
-                    if haskey(new_meta.data, "batch")
-                        new_meta.data["batch"] = batch
-                    end
+                    new_meta.data["batch"] = batch
                     insert!(circuit.circuit_meta, idx+1, new_meta)
                     idx += 1
                     len += 1
@@ -342,7 +398,7 @@ module GroverCircuitBuilder
         end
 
         @info "Inserting grover-lane after lane number $(insert_lane_at-1)"
-        insert_target_lane(circuit, insert_lane_at)
+        insert_model_lane(circuit, insert_lane_at)
         target_lanes = _map_lanes(circuit, circuit.current_checkpoint-1, target_lanes)
 
         # Filter out nothing
@@ -351,38 +407,99 @@ module GroverCircuitBuilder
         
         push!(circuit.circuit, OracleBlock(insert_lane_at, filtered_lanes, filtered_target_bits))
         push!(circuit.circuit_meta, BlockMeta(circuit.current_checkpoint))
+        @info "Inserted lane at: $(insert_lane_at)"
 
         return insert_lane_at
     end
 
+    """
+    Creates a checkpoint for the circuit by deepcopying it.
+    """
     function create_checkpoint(circuit::GroverCircuit)::GroverCircuit
         return deepcopy(circuit)
     end
 
+    """
+    Manipulates the order of lanes by applying a permutation (mapping function).
+    This is useful if you want to rearrange lanes. 
+    Note that manipulations are lazy operations which might cause confusing errors if you pass invalid mappings.
+    If you insert blocks after lane manipulation you will have to use the new order.
+    """
     function manipulate_lanes(circuit::GroverCircuit, mapping::Function)
-        map!(mapping, circuit.target_lanes, circuit.target_lanes)
-        map!(mapping, circuit.model_lanes, circuit.target_lanes)
+        map!(mapping, circuit.model_lanes, circuit.model_lanes)
+        map!(mapping, circuit.param_lanes, circuit.param_lanes)
 
         push!(circuit.lane_manipulators, mapping)
         circuit.current_checkpoint += 1
     end
 
-    function insert_target_lane(circuit::GroverCircuit, location::Int)
+    """
+    Swaps the two lanes specified.
+    """
+    function swap_lanes(circuit::GroverCircuit, first_lane::Int, second_lane::Int)
+        if first_lane < 1 || first_lane > circuit_size(circuit)
+            throw(DomainError(first_lane, "The index of the first lane to swap is out of bounds (must be within lanes 1:" * string(circuit_size(circuit)) * ")"))
+        end
+        if second_lane < 1 || second_lane > circuit_size(circuit)
+            throw(DomainError(second_lane, "The index of the second lane to swap is out of bounds (must be within lanes 1:" * string(circuit_size(circuit)) * ")"))
+        end
+
+        manipulate_lanes(circuit, x -> x == first_lane ? second_lane : (x == second_lane ? first_lane : x))
+    end
+
+    """
+    Shifts all lanes down the specified number of lanes. If negative, lanes are shifted up instead.
+    """
+    function shift_lanes(circuit::GroverCircuit, shift_down_n::Int)
+        if shift_down_n <= -circuit_size(circuit) || shift_down_n >= circuit_size(circuit)
+            throw(DomainError(shift_down_n, "The shift factor is too big / small. Cannot shift more lanes up / down than the circuit size $(circuit_size(circuit))."))
+        end
+
+        cur_size = circuit_size(circuit)
+
+        manipulate_lanes(circuit, x -> x + shift_down_n < 1 ? x + cur_size + shift_down_n : (x + shift_down_n > cur_size ? x + shift_down_n - cur_size : x + shift_down_n))
+    end
+
+    """
+    Inserts a model-lane at a specific location. All lanes after this location will be shifted below this lane.
+    """
+    function insert_model_lane(circuit::GroverCircuit, location::Int)
+        if location < 1 || location > circuit_size(circuit) + 1
+            throw(DomainError(location, "Target location out of bounds (must be within lanes 1:" * string(circuit_size(circuit)) * ")"))
+        end
+        
+        manipulate_lanes(circuit, x -> x >= location ? x + 1 : x)
+        push!(circuit.model_lanes, location)
+        @info "INSERT"
+        @info circuit.model_lanes
+        @info circuit.param_lanes
+    end
+
+    """
+    Inserts a param-lane at a specific location. All lanes after this location will be shifted below this lane.
+    """
+    function insert_param_lane(circuit::GroverCircuit, location::Int)
         if location < 1 || location > circuit_size(circuit)
             throw(DomainError(location, "Target location out of bounds (must be within lanes 1:" * string(circuit_size(circuit)) * ")"))
         end
         
         manipulate_lanes(circuit, x -> x >= location ? x + 1 : x)
-        push!(circuit.target_lanes, location)
+        push!(circuit.param_lanes, location)
     end
 
-    function build_grover_iteration(circuit::GroverCircuit, oracle_lane::Int, target_bit::Bool)::Yao.YaoAPI.AbstractBlock
+    """
+    Builds a single grover-iteration as a circuit.
+    """
+    function build_grover_iteration(circuit::GroverCircuit, target_lane::Int, target_bit::Bool)::Yao.YaoAPI.AbstractBlock
         circ_size = circuit_size(circuit)
-        diff_gate = _diffusion_gate_for_zero_function(circ_size, oracle_lane, target_bit)
+        diff_gate = _diffusion_gate_for_zero_function(circ_size, target_lane, target_bit)
         oracle = prepareOracleGate(circ_size, compile_circuit(circuit, inv=false), compile_circuit(circuit, inv=true))
         return createGroverIteration(circ_size, diff_gate, oracle)
     end
 
+    """
+    Compiles the grover circuit as a Yao-Circuit. You can also compile the inverse circuit.
+    """
     function compile_circuit(circuit::GroverCircuit; inv::Bool = false)::Yao.YaoAPI.AbstractBlock
         circ_size = circuit_size(circuit)
         m_circuit = inv ? reverse(circuit.circuit) : circuit.circuit
@@ -397,11 +514,14 @@ module GroverCircuitBuilder
         return compiled_circuit
     end
 
+    """
+    Compiles a single Grover-Block within a circuit. You can also compile the inverse of that block.
+    """
     function compile_block(circuit::GroverCircuit, block::GroverBlock, meta::BlockMeta; inv::Bool = false)::Yao.YaoAPI.AbstractBlock
         if !isnothing(meta.manipulator)
-            print("Manipulating block...")
+            @debug "Manipulating block..."
             if !meta.manipulator(block, meta, inv)
-                print("Skipping block...")
+                @debug "Skipping block..."
                 return chain(circuit_size(circuit))
             end
         end
@@ -421,6 +541,18 @@ module GroverCircuitBuilder
         throw(DomainError(block, "Unknown Grover-Block"))
     end
 
+    """
+    Creates one or multiple custom Yao-Block.
+
+    # Examples
+    ```julia
+    custom_block = chain(2, put(1 => Rz(pi)), put(2 => Rz(pi)))
+    custom_block_inv = chain(2, put(2 => Rz(-pi)), put(1 => Rz(-pi)))
+    yao_block(grover_circ, [1:2, 1:2], custom_block, custom_block_inv, control_lanes=[3:4, 5:6])
+    ```
+
+    For more information see the [documentation](https://github.com/Jaybit0/QCProjectCode/blob/main/readme.md#custom-yao-gates).
+    """
     function yao_block(circuit::GroverCircuit, target_lanes::Union{Vector, AbstractRange, Int}, block::Yao.YaoAPI.AbstractBlock, inv_block::Yao.YaoAPI.AbstractBlock; control_lanes::Union{Vector, AbstractRange, Int, Nothing} = nothing, push_to_circuit::Bool = true)::Tuple{YaoBlock, BlockMeta}
         target_lanes = _resolve_stacked_control_lanes(target_lanes)
         control_lanes = _resolve_stacked_control_lanes(control_lanes)
@@ -436,6 +568,16 @@ module GroverCircuitBuilder
         return block, meta
     end
 
+    """
+    Creates one or multiple hadamard blocks.
+
+    # Examples 
+    ```julia
+    hadamard(grover_circ, 1:2, control_lanes = [3, 4:6])
+    ```
+
+    For more information see the [documentation](https://github.com/Jaybit0/QCProjectCode/blob/main/readme.md#hadamard-gates).
+    """
     function hadamard(circuit::GroverCircuit, target_lanes::Union{Vector, AbstractRange, Int}; control_lanes::Union{Vector, AbstractRange, Int, Nothing} = nothing, push_to_circuit::Bool = true)::Tuple{HadamardBlock, BlockMeta}
         target_lanes = _resolve_lanes(target_lanes)
         control_lanes = _resolve_stacked_control_lanes(control_lanes)
@@ -451,13 +593,24 @@ module GroverCircuitBuilder
         return block, meta
     end
 
+    """
+    Creates a learned rotation.
+
+    # Examples
+
+    ```julia
+    learned_rotation(grover_circ, 1, 3:6)
+    ```
+
+    For more information see the [documentation](https://github.com/Jaybit0/QCProjectCode/blob/main/readme.md#learned-rotation-gates).
+    """
     function learned_rotation(circuit::GroverCircuit, target_lane::Int, control_lanes::Union{Vector, AbstractRange, Int}; max_rotation_rad::Number = 2*pi, push_to_circuit::Bool = true)::Tuple{RotationBlock, BlockMeta}
         control_lanes = _resolve_stacked_control_lanes(control_lanes)
 
         current_rotation = max_rotation_rad
         rotations = Vector{Number}()
 
-        for i in control_lanes
+        for _ in control_lanes
             current_rotation /= 2
             push!(rotations, current_rotation)
         end
@@ -473,6 +626,9 @@ module GroverCircuitBuilder
         return block, meta
     end
 
+    """
+    A legacy rotation.
+    """
     function rotation(circuit::GroverCircuit, target_lane::Int; control_lanes::Union{Vector, AbstractRange, Int, Nothing} = nothing, max_rotation_rad::Number = 2*pi, push_to_circuit::Bool = true)::Tuple{RotationBlock, BlockMeta}
         control_lanes = _resolve_stacked_control_lanes(control_lanes)
         
@@ -510,6 +666,16 @@ module GroverCircuitBuilder
         return block, meta
     end
 
+    """
+    Creates one or multiple not-gates.
+
+    # Examples
+    ```julia
+    not(grover_circ, 1:2, control_lanes = [3, 4:6])
+    ```
+
+    For more information see the [documentation](https://github.com/Jaybit0/QCProjectCode/blob/main/readme.md#not-gates).
+    """
     function not(circuit::GroverCircuit, target_lanes::Union{Vector, AbstractRange, Int}; control_lanes::Union{Int, AbstractRange, Vector, Nothing} = nothing, push_to_circuit::Bool = true)::Tuple{NotBlock, BlockMeta}
         target_lanes = _resolve_lanes(target_lanes)
         control_lanes = _resolve_stacked_control_lanes(control_lanes)
@@ -535,7 +701,8 @@ module GroverCircuitBuilder
         circ_size = circuit_size(circuit)
         
         if isnothing(block.control_lanes)
-            return chain(circ_size, put(_resolve_grover_lane(circuit, block.target_lanes) => Ry(inv ? -block.rotations[1] : block.rotations[1])))
+            #TODO: Is mapping correct?
+            return chain(circ_size, put(_map_lanes(circuit, meta.insertion_checkpoint, block.target_lanes) => Ry(inv ? -block.rotations[1] : block.rotations[1])))
         end
 
         m_circuit = chain(circ_size)
@@ -656,10 +823,6 @@ module GroverCircuitBuilder
 
     function _compile_oracle_block(circuit::GroverCircuit, block::OracleBlock, meta::BlockMeta; inv::Bool = false)::Yao.YaoAPI.AbstractBlock
         circ_size = circuit_size(circuit)
-        
-        #if !_use_grover_lane(block.target_lanes)
-        #    return chain(circ_size) # return identity
-        #end
 
         m_target_lanes = _map_lanes(circuit, meta.insertion_checkpoint, block.target_lanes)
 
@@ -679,6 +842,13 @@ module GroverCircuitBuilder
     # ===== HELPER FUNCTIONS =====
     # ============================
 
+    """
+        _diffusion_gate_for_zero_function(circuitSize::Int, target_lane::Int, target_bit::Bool)::Yao.YaoAPI.AbstractBlock)
+
+    Creates a diffusion gate for the given target lane and target bit. The diffusion gate is a gate that inverts the amplitude of the target state.
+    We assume that the input state is |0>.
+        
+    """
     function _diffusion_gate_for_zero_function(circuitSize::Int, target_lane::Int, target_bit::Bool)::Yao.YaoAPI.AbstractBlock
         if target_bit
             return chain(circuitSize, put(target_lane => Z))
@@ -691,6 +861,13 @@ module GroverCircuitBuilder
         return idx -> oracle(_convert_to_bools(idx, outRange))
     end
 
+    """
+        _convert_to_bools(index::Int, outRange::Vector{Int})::Vector{Bool}
+
+    Converts the given index substracted by 1 to a boolean array.
+    The index is assumed to be in the range of 0 to 2^length(outRange)-1.
+
+    """
     function _convert_to_bools(index::Int, outRange::Vector{Int})::Vector{Bool}
         out = falses(length(outRange))
         index -= 1 # To adjust the offset in the quantum register (state |0> = 1)
@@ -704,7 +881,7 @@ module GroverCircuitBuilder
 
     function _oracle_function(target_lanes::Vector{Int}, target_bits::Vector{Bool})::Function
         f =  function(data)
-            for (idx, lane) in enumerate(target_lanes)
+            for (idx, _) in enumerate(target_lanes)
                 if target_bits[idx] != data[idx]
                     return false
                 end
@@ -716,14 +893,8 @@ module GroverCircuitBuilder
 
     function _map_lanes(circuit::GroverCircuit, checkpoint::Int, lanes::Vector{Int})::Vector{Int}
         for i in checkpoint:length(circuit.lane_manipulators)
-            #println("Mapping: ", i)
             lanes = map(circuit.lane_manipulators[i], lanes)
-            #println(lanes)
         end
-
-        #println("Grover:")
-        #lanes = _resolve_grover_lanes(circuit, lanes)
-        #println(lanes)
 
         return lanes
     end
@@ -852,7 +1023,7 @@ module GroverCircuitBuilder
         return reduce(vcat, map(inner_vec -> map(x -> x[2], inner_vec), output_bits))
     end
 
-    function _check_for_batch_lanes(circuit::GroverCircuit, block::GroverBlock, meta::BlockMeta, target_lanes::Vector{Int}, batch::Int, inserted_batch_lanes::Vector{Int})::Tuple{Bool, Vector{Int}, Union{Vector{Vector{Int}}, Nothing}}
+    function _check_for_batch_lanes(circuit::GroverCircuit, block::GroverBlock, meta::BlockMeta, model_lanes::Vector{Int}, batch::Int, inserted_batch_lanes::Vector{Int})::Tuple{Bool, Vector{Int}, Union{Vector{Vector{Int}}, Nothing}}
         m_batch_lane = false
 
         m_target_lanes = _map_lanes(circuit, meta.insertion_checkpoint, block.target_lanes)
@@ -860,22 +1031,22 @@ module GroverCircuitBuilder
 
         # Walk through individual target lanes and offset them if they are in a batch lane
         for (i, lane) in enumerate(m_target_lanes)
-            for (j, batch_lane) in enumerate(target_lanes)
+            for (j, batch_lane) in enumerate(model_lanes)
                 if lane == batch_lane
                     m_batch_lane = true
-                    m_target_lanes[i] = inserted_batch_lanes[(batch-2) * length(target_lanes) + j]
+                    m_target_lanes[i] = inserted_batch_lanes[(batch-2) * length(model_lanes) + j]
                 end
             end
         end
 
         # Walk through individual control lanes and offset them if they are in a batch lane
         if !isnothing(block.control_lanes)
-            for (i, ctrl) in enumerate(block.control_lanes)
+            for (i, ctrl) in enumerate(_map_lanes(circuit, meta.insertion_checkpoint, block.control_lanes))
                 for (i2, lane) in enumerate(ctrl)
-                    for (j, batch_lane) in enumerate(target_lanes)
+                    for (j, batch_lane) in enumerate(model_lanes)
                         if lane == batch_lane
                             m_batch_lane = true
-                            m_control_lanes[i][i2] = inserted_batch_lanes[(batch-2) * length(target_lanes) + j]
+                            m_control_lanes[i][i2] = inserted_batch_lanes[(batch-2) * length(model_lanes) + j]
                         end
                     end
                 end
