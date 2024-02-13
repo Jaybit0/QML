@@ -8,7 +8,7 @@ It is a Proof-of-Concept implementation in the setting where portions of a circu
 For example, consider the simple case where we want to learn a quantum circuit that generates
 samples from the [Bernoulli distribution](https://en.wikipedia.org/wiki/Bernoulli_distribution) with $p=\frac{3}{4}$. Given the observations $1,0,1,1$, we construct the following quantum circuit:
 
-![Setup of using amplitude amplification to learn a quantum circuit for the Bernoulli distribution](/imgs/bernoulli_circuit.pdf)
+![Setup of using amplitude amplification to learn a quantum circuit for the Bernoulli distribution](/imgs/bernoulli_circuit.pdf "description")
 
 In this setting, the amplitude of parameter qubits amplified, when the target qubit is 1.
 This will result in a model for the Bernoulli distribution, which we aim to learn.
