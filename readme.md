@@ -1,7 +1,17 @@
 # GroverCircuitBuilder Module for Quantum Machine Learning
 
 ## Introduction
-The GroverCircuitBuilder module in Julia automates the creation of quantum circuits specifically tailored for quantum machine learning applications. This module simplifies the process of setting up and running Grover's algorithm within the quantum machine learning context, enhancing both efficiency and accessibility for researchers and practitioners in the field.
+This module written in Julia uses the Yao.jl framework and automates the creation of quantum circuits
+specifically tailored for QML training using amplitude amplification.
+It is a Proof-of-Concept implementation in the setting where portions of a circuit are parameterized using dedicated parameter qubits. These parameter qubits are then tuned using amplitude amplification according to a cost function.
+
+For example, consider the simple case where we want to learn a quantum circuit that generates
+samples from the [Bernoulli distribution](https://en.wikipedia.org/wiki/Bernoulli_distribution) with $p=\frac{3}{4}$. Given the observations $1,0,1,1$, we construct the following quantum circuit:
+
+![Setup of using amplitude amplification to learn a quantum circuit for the Bernoulli distribution](/imgs/bernoulli_circuit.pdf)
+
+In this setting, the amplitude of parameter qubits amplified, when the target qubit is 1.
+This will result in a model for the Bernoulli distribution, which we aim to learn.
 
 ## Installation
 
