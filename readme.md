@@ -210,13 +210,12 @@ learned_rotation(grover_circ, model_lanes(grover_circ)[1], param_lanes(grover_ci
 
 ### Custom yao gates
 
-You can also add custom yao gates using the function `yao_block`. However, as we cannot automatically determine the inverse gate (at least not a gate representation), you need to specify the inverse as well.
-Keep in mind that the sequence order is reversed for the inverse gate. Only use this function if you know what you are doing. More complex algorithms of our module might break when you use this function. 
+You can also add custom yao gates using the function `yao_block`.
+Keep in mind that the sequence order is reversed for the inverse gate.
 
 ```julia
 custom_block = chain(2, put(1 => Rz(pi)), put(2 => Rz(pi)))
-custom_block_inv = chain(2, put(2 => Rz(-pi)), put(1 => Rz(-pi)))
-yao_block(grover_circ, [1:2, 1:2], custom_block, custom_block_inv, control_lanes=[3:4, 5:6])
+yao_block(grover_circ, [1:2, 1:2], custom_block; control_lanes=[3:4, 5:6])
 ```
 
 ![](imgs/yao_block1.svg)

@@ -29,6 +29,7 @@ module GroverCircuitBuilder
     export build_grover_iteration;
     export auto_compute;
     export trace_inversion_problem;
+    export ml_block;
     
     abstract type GroverBlock end
 
@@ -112,6 +113,14 @@ module GroverCircuitBuilder
         return circuit.param_lanes[:]
     end
 
+    function ml_block(circuit::Yao.YaoAPI.AbstractBlock, model_lanes::Int, output_bits::Union{Vector, Bool}, num_grover_iterations::Int)::Yao.YaoAPI.AbstractBlock
+        block_size = nqubits(circuit)
+        grover_circuit = empty_circuit(model_lanes, block_size - length(model_lanes))
+        yao_block(grover_circuit, [1:block_size], circuit)
+        _, _, ml_block, _ = auto_compute(grover_circuit, output_bits; forced_grover_iterations=num_grover_iterations, evaluate=false, log=false)
+        return ml_block
+    end
+
     """
     Automatically computes the grover-circuit to the given circuit.
     The function returns a Tuple containing the final simulated register, 
@@ -133,8 +142,8 @@ module GroverCircuitBuilder
     - `grover_circuit::Yao.YaoAPI.AbstractBlock`: The generated grover circuit with either the optimal number of iterations, the number of `forced_grover_iterations` if not `nothing`, or a single iteration if `evaluate == false`
     - `oracle_function::Function`: The function that returns `true` if and only if the corresponding state index is a target state
     """
-    function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; forced_grover_iterations::Union{Int, Nothing} = nothing, ignore_errors::Bool = true, evaluate::Bool = true)::Tuple{Union{Yao.ArrayReg, Nothing}, Yao.YaoAPI.AbstractBlock, Yao.YaoAPI.AbstractBlock, Function}
-        @info "Simulating grover circuit..."
+    function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; forced_grover_iterations::Union{Int, Nothing} = nothing, ignore_errors::Bool = true, evaluate::Bool = true, log::Bool = true)::Tuple{Union{Yao.ArrayReg, Nothing}, Yao.YaoAPI.AbstractBlock, Yao.YaoAPI.AbstractBlock, Function}
+        log && @info "Simulating grover circuit..."
 
         # Map the corresponding types to Vector{Int}
         target_lanes = circuit.model_lanes
@@ -172,14 +181,20 @@ module GroverCircuitBuilder
 
         # We first create the main circuit to determine the probability of the target state
         main_circuit = compile_circuit(circuit)
-        @info "Main circuit compiled"
+        if log
+            @info "Main circuit compiled"
+        end
 
         # Gate the zero state through the main circuit
         out = nothing
         if evaluate
-            @info "Evaluating main circuit..."
+            if log
+                @info "Evaluating main circuit..."
+            end
             out = register |> main_circuit
-            @info "Main circuit evaluated"
+            if log
+                @info "Main circuit evaluated"
+            end
         end
 
         # Prepare the oracle function. This function is a function that returns true if the 
@@ -195,10 +210,14 @@ module GroverCircuitBuilder
             return nothing, main_circuit, createGroverCircuit(circ_size, isnothing(forced_grover_iterations) ? 1 : forced_grover_iterations, build_grover_iteration(circuit, oracle_lane, _use_grover_lane(target_lanes) ? true : target_bits[1][1][2])), oracle_function
         end
 
-        @info "Cumulative Pre-Probability: $cumulative_pre_probability"
+        if log
+            @info "Cumulative Pre-Probability: $cumulative_pre_probability"
+        end
         angle_rad = computeAngle(cumulative_pre_probability)
-        @info "Angle towards orthogonal state: $angle_rad"
-        @info "Angle towards orthogonal state (deg): $(angle_rad / pi * 180)"
+        if log
+            @info "Angle towards orthogonal state: $angle_rad"
+            @info "Angle towards orthogonal state (deg): $(angle_rad / pi * 180)"
+        end
 
         num_grover_iterations = nothing
         if ignore_errors || !isnothing(forced_grover_iterations)
@@ -218,8 +237,10 @@ module GroverCircuitBuilder
         # If the we force the number of grover iterations, we need to overwrite the optimal number of grover iterations
         actual_grover_iterations = isnothing(forced_grover_iterations) ? num_grover_iterations : forced_grover_iterations
 
-        @info "Optimal number of Grover iterations: $(isnothing(num_grover_iterations) ? "?" : num_grover_iterations)"
-        @info "Actual optimum from formula: $(isnothing(num_grover_iterations) ? "?" : 1/2 * (pi/(2 * computeAngle(cumulative_pre_probability)) - 1))"
+        if log
+            @info "Optimal number of Grover iterations: $(isnothing(num_grover_iterations) ? "?" : num_grover_iterations)"
+            @info "Actual optimum from formula: $(isnothing(num_grover_iterations) ? "?" : 1/2 * (pi/(2 * computeAngle(cumulative_pre_probability)) - 1))"
+        end
 
         if isnothing(actual_grover_iterations)
             @warn ""
@@ -239,26 +260,32 @@ module GroverCircuitBuilder
             actual_grover_iterations = 1
         end
 
-        @info "Compiling grover circuit..."
+        if log 
+            @info "Compiling grover circuit..."
+        end
         # Create the grover circuit to amplify the amplitude
         grover_circuit = createGroverCircuit(circ_size, actual_grover_iterations, build_grover_iteration(circuit, oracle_lane, _use_grover_lane(target_lanes) ? true : target_bits[1][1][2]))
-        @info "Grover circuit compiled"
+        if log
+            @info "Grover circuit compiled"
 
-        @info "Evaluating grover circuit..."
+            @info "Evaluating grover circuit..."
+        end
         # Gate the current quantum state through the grover circuit
         out = out |> grover_circuit
-        @info "Grover circuit evaluated"
+        if log
+            @info "Grover circuit evaluated"
+        end
 
         cum_prob = computeCumProb(out, oracle_function)
         pred_cum_prob = computePostGroverLikelihood(computeAngle(cumulative_pre_probability), actual_grover_iterations)
 
         # Print the results
-        @info ""
-        @info "======== RESULTS ========"
-        @info "========================="
-        @info ""
-        @info "Cumulative Probability (after $(actual_grover_iterations)x Grover): $(cum_prob)"
-        @info "Predicted likelihood after $(actual_grover_iterations)x Grover: $pred_cum_prob"
+        log && @info ""
+        log && @info "======== RESULTS ========"
+        log && @info "========================="
+        log && @info ""
+        log && @info "Cumulative Probability (after $(actual_grover_iterations)x Grover): $(cum_prob)"
+        log &&@info "Predicted likelihood after $(actual_grover_iterations)x Grover: $pred_cum_prob"
 
         if abs(cum_prob - pred_cum_prob) > 0.01
             @warn ""
@@ -553,17 +580,16 @@ module GroverCircuitBuilder
     # Examples
     ```julia
     custom_block = chain(2, put(1 => Rz(pi)), put(2 => Rz(pi)))
-    custom_block_inv = chain(2, put(2 => Rz(-pi)), put(1 => Rz(-pi)))
-    yao_block(grover_circ, [1:2, 1:2], custom_block, custom_block_inv, control_lanes=[3:4, 5:6])
+    yao_block(grover_circ, [1:2, 1:2], custom_block; control_lanes=[3:4, 5:6])
     ```
 
     For more information see the [documentation](https://github.com/Jaybit0/QCProjectCode/blob/main/readme.md#custom-yao-gates).
     """
-    function yao_block(circuit::GroverCircuit, target_lanes::Union{Vector, AbstractRange, Int}, block::Yao.YaoAPI.AbstractBlock, inv_block::Yao.YaoAPI.AbstractBlock; control_lanes::Union{Vector, AbstractRange, Int, Nothing} = nothing, push_to_circuit::Bool = true)::Tuple{YaoBlock, BlockMeta}
+    function yao_block(circuit::GroverCircuit, target_lanes::Union{Vector, AbstractRange, Int}, block::Yao.YaoAPI.AbstractBlock; inv_block::Union{Yao.YaoAPI.AbstractBlock, Nothing} = nothing, control_lanes::Union{Vector, AbstractRange, Int, Nothing} = nothing, push_to_circuit::Bool = true)::Tuple{YaoBlock, BlockMeta}
         target_lanes = _resolve_stacked_control_lanes(target_lanes)
         control_lanes = _resolve_stacked_control_lanes(control_lanes)
 
-        block = YaoBlock(block, inv_block, target_lanes, control_lanes)
+        block = YaoBlock(block, isnothing(inv_block) ? block' : inv_block, target_lanes, control_lanes)
         meta = BlockMeta(circuit.current_checkpoint)
 
         if push_to_circuit
