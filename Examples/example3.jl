@@ -1,22 +1,15 @@
 # ======== IMPORTS ========
 # =========================
 
-include("../Modules/SetupTool.jl")
+include("../Modules/GroverML.jl")
+include("../Modules/GroverCircuitBuilder.jl")
+include("../Modules/GroverPlotting.jl")
 
-using .SetupTool
-if setupPackages(false, update_registry = false)
-    include("../Modules/GroverML.jl")
-    include("../Modules/GroverCircuitBuilder.jl")
-    include("../Modules/GroverPlotting.jl")
-end
-
+using Yao
+using Yao.EasyBuild, YaoPlots
 using .GroverML
 using .GroverCircuitBuilder
 using .GroverPlotting
-using Yao
-using Yao.EasyBuild, YaoPlots
-
-configureYaoPlots()
 
 # ========== CODE ==========
 # ==========================

@@ -26,6 +26,33 @@ Measuring the parameter qubits then yields a quantum circuit model for the Berno
 
 ### Basic Setup and Module import
 
+#### Static import
+
+To be able to use static imports with this module, you need to add the following packages to your Julia environment:
+
+- `GR`
+- `Yao`
+- `YaoPlots`
+- `Plots`
+- `BitBasis`
+- `StatsBase`
+
+Then, you can include the following header:
+
+```julia
+include("../Modules/GroverML.jl")
+include("../Modules/GroverCircuitBuilder.jl")
+include("../Modules/GroverPlotting.jl")
+
+using Yao
+using Yao.EasyBuild, YaoPlots
+using .GroverML
+using .GroverCircuitBuilder
+using .GroverPlotting
+```
+
+#### Creating a temporary virtual environment
+
 Include this code at the beginning of your script. This will automatically import all necessary modules. Note that these are relative paths and might need to be changed according to your file structure.
 
 ```julia
@@ -38,13 +65,11 @@ if setupPackages(false, update_registry = false)
     include("../Modules/GroverPlotting.jl")
 end
 
+using Yao
+using Yao.EasyBuild, YaoPlots
 using .GroverML
 using .GroverCircuitBuilder
 using .GroverPlotting
-using Yao
-using Yao.EasyBuild, YaoPlots
-
-configureYaoPlots()
 ```
 
 If you experience any issues with the way modules are imported, you could use the code below as a workaround. However, then you will not be able to see module documentation.

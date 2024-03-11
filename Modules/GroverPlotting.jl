@@ -55,4 +55,6 @@ module GroverPlotting
         #YaoPlots.CircuitStyles.textsize[] = 13
         #YaoPlots.CircuitStyles.paramtextsize[] = 8
     end
+
+	configureYaoPlots()
 end
