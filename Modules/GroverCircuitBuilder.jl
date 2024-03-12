@@ -89,8 +89,16 @@ module GroverCircuitBuilder
     """
     Creates an empty circuit with the specified number of `model` and `param`-lanes.
     """
-    function empty_circuit(model_lanes::Int, param_lanes::Int)::GroverCircuit
-        return GroverCircuit(collect(1:model_lanes), collect(model_lanes+1:model_lanes+param_lanes), Vector{GroverBlock}(), Vector{BlockMeta}(), false, 1, Vector{Function}())
+    function empty_circuit(model_lanes::Union{AbstractRange, Vector, Int}, param_lanes::Union{AbstractRange, Vector, Int})::GroverCircuit
+        if isa(model_lanes, Int) && isa(param_lanes, Int)
+            param_lanes = collect(model_lanes+1:model_lanes+param_lanes)
+            model_lanes = collect(1:model_lanes)
+        else
+            model_lanes = _resolve_lanes(model_lanes)
+            param_lanes = _resolve_lanes(param_lanes)
+        end
+
+        return GroverCircuit(model_lanes, param_lanes, Vector{GroverBlock}(), Vector{BlockMeta}(), false, 1, Vector{Function}())
     end
 
     function circuit_size(circuit::GroverCircuit)
