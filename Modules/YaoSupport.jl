@@ -1,18 +1,8 @@
-# ======== IMPORTS ========
-# =========================
+export GroverMLBlock
 
-#include("../Modules/SetupTool.jl")
-
-#using .SetupTool
-#if setupPackages(false, update_registry = false)
-include("../Modules/GroverML.jl")
-include("../Modules/GroverCircuitBuilder.jl")
-include("../Modules/GroverPlotting.jl")
-#end
+include("GroverCircuitBuilder.jl")
 
 using .GroverML
-using .GroverCircuitBuilder
-using .GroverPlotting
 using Yao
 using Yao.EasyBuild, YaoPlots
 
@@ -33,8 +23,16 @@ struct GroverMLBlock{D} <: AbstractBlock{D}
     compiled_circuit::CompiledGroverCircuit
 end
 
-function GroverMLBlock(circuit::AbstractBlock, model_lanes::Union{Int, Vector{Int}, AbstractRange}, param_lanes::Union{AbstractRange, Vector, Int}, output_bits::Union{Vector, Bool}, grover_iterations::Int)
+function GroverMLBlock(circuit::AbstractBlock, model_lanes::Union{Vector, AbstractRange, Int}, param_lanes::Union{AbstractRange, Vector, Int}, output_bits::Union{Vector, Bool}, grover_iterations::Int)
     block_size = nqubits(circuit)
+    
+    if isa(model_lanes, Int)
+        model_lanes = [model_lanes]
+    end
+
+    if isa(param_lanes, Int)
+        param_lanes = [param_lanes]
+    end
     
     if length(model_lanes) + length(param_lanes) != block_size
         throw(ArgumentError("The model lanes and parameter lanes must cover all qubits in the circuit"))
@@ -62,21 +60,36 @@ function Yao.nqudits(gate::GroverMLBlock)
     return nqudits(gate.compiled_circuit.main_circuit)
 end
 
-function Yao.subblocks(gate::GroverMLBlock)
-    return subblocks(gate.compiled_circuit.main_circuit)
-end
-
-function chained(gate::GroverMLBlock)
+function chained(gate::GroverMLBlock)::AbstractBlock
     block_size = nqubits(gate.compiled_circuit.main_circuit)
 
     return chain(block_size, put(1:block_size => gate.compiled_circuit.main_circuit), put(1:block_size => gate.compiled_circuit.grover_circuit))
 end
 
+function Yao.subblocks(gate::GroverMLBlock)
+    return subblocks(chained(gate))
+end
+
+function Yao.mat(gate::GroverMLBlock)
+    return mat(chained(gate))
+end
+
+function Yao.mat(::Type{T}, gate::GroverMLBlock) where {T}
+    return mat(T, chained(gate))
+end
+
+function Yao.occupied_locs(gate::GroverMLBlock)
+    return occupied_locs(chained(gate))
+end
+
+function Yao.print_block(gate::GroverMLBlock)
+    return print_block(chained(gate))
+end
+
+function Yao.adjoint(gate::GroverMLBlock)
+    return adjoint(chained(gate))
+end
+
 function YaoPlots.draw!(grid::CircuitGrid, gate::GroverMLBlock, args...; kwargs...)
     return YaoPlots.draw!(grid, chained(gate), args...; kwargs...)
 end
-
-circ = chain(2, put(2 => H), put(1 => X))
-ml_block = GroverMLBlock(circ, 1, 1, true, 1)
-
-vizcircuit(ml_block)
