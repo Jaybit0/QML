@@ -40,15 +40,13 @@ To be able to use static imports with this module, you need to add the following
 Then, you can include the following header:
 
 ```julia
-include("../Modules/GroverML.jl")
-include("../Modules/GroverCircuitBuilder.jl")
-include("../Modules/GroverPlotting.jl")
+if !isdefined(Main, :GroverML)
+    include("../Modules/GroverML.jl")
+    using .GroverML
+end
 
 using Yao
 using Yao.EasyBuild, YaoPlots
-using .GroverML
-using .GroverCircuitBuilder
-using .GroverPlotting
 ```
 
 #### Creating a temporary virtual environment

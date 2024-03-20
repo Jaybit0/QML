@@ -185,7 +185,6 @@ function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; 
 
     # If we use an additional grover-lane, we need to 
     # prepare the circuit by adding an oracle block (see function prepare(...))
-    # TODO: Fix this check
     if _use_grover_lane(target_lanes) || length(target_bits) > 1
         circuit = create_checkpoint(circuit)
         # Push the oracle block to the circuit
@@ -203,9 +202,8 @@ function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; 
 
     # We first create the main circuit to determine the probability of the target state
     main_circuit = compile_circuit(circuit)
-    if log
-        @info "Main circuit compiled"
-    end
+
+    log && @info "Main circuit compiled"
 
     # Gate the zero state through the main circuit
     out = nothing
@@ -232,14 +230,12 @@ function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; 
         return nothing, main_circuit, createGroverCircuit(circ_size, isnothing(forced_grover_iterations) ? 1 : forced_grover_iterations, build_grover_iteration(circuit, oracle_lane, _use_grover_lane(target_lanes) ? true : target_bits[1][1][2])), oracle_function
     end
 
-    if log
-        @info "Cumulative Pre-Probability: $cumulative_pre_probability"
-    end
+    log && @info "Cumulative Pre-Probability: $cumulative_pre_probability"
+
     angle_rad = computeAngle(cumulative_pre_probability)
-    if log
-        @info "Angle towards orthogonal state: $angle_rad"
-        @info "Angle towards orthogonal state (deg): $(angle_rad / pi * 180)"
-    end
+
+    log && @info "Angle towards orthogonal state: $angle_rad"
+    log && @info "Angle towards orthogonal state (deg): $(angle_rad / pi * 180)"
 
     num_grover_iterations = nothing
     if ignore_errors || !isnothing(forced_grover_iterations)
@@ -259,10 +255,8 @@ function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; 
     # If the we force the number of grover iterations, we need to overwrite the optimal number of grover iterations
     actual_grover_iterations = isnothing(forced_grover_iterations) ? num_grover_iterations : forced_grover_iterations
 
-    if log
-        @info "Optimal number of Grover iterations: $(isnothing(num_grover_iterations) ? "?" : num_grover_iterations)"
-        @info "Actual optimum from formula: $(isnothing(num_grover_iterations) ? "?" : 1/2 * (pi/(2 * computeAngle(cumulative_pre_probability)) - 1))"
-    end
+    log && @info "Optimal number of Grover iterations: $(isnothing(num_grover_iterations) ? "?" : num_grover_iterations)"
+    log && @info "Actual optimum from formula: $(isnothing(num_grover_iterations) ? "?" : 1/2 * (pi/(2 * computeAngle(cumulative_pre_probability)) - 1))"
 
     if isnothing(actual_grover_iterations)
         @warn ""

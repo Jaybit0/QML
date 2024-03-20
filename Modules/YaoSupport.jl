@@ -16,7 +16,7 @@ struct CompiledGroverCircuit
     oracle_function::Function
 end
 
-struct GroverMLBlock{D} <: AbstractBlock{D} 
+struct GroverMLBlock{D} <: CompositeBlock{D} 
     circuit::GroverCircuit
     output_bits::Union{Vector, Bool}
     grover_iterations::Int
