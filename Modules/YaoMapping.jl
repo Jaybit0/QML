@@ -19,7 +19,7 @@ function remap(circ::Yao.PutBlock, mapping::Dict, expected_length::Int=Yao.nqubi
         end
     end
 
-    if length(insert_locs) == 0 && expected_length == Yao.nqubits(circ)
+    if length(insert_locs) == 0
         if expected_length != Yao.nqubits(circ)
             @debug "DIMENSION MISMATCH: RECOMPILATION REQUIRED (NO INSERTIONS)"
             return Yao.put(circ.locs => Yao.subblocks(circ)[1])(expected_length), nothing
@@ -229,6 +229,15 @@ function remap(circ::Yao.CompositeBlock, mapping::Dict, expected_length::Int=Yao
             insert!(subblocks, i+1, mblock_duplicate)
             inserted = true
         end        
+    end
+
+    @debug "NEW COMPOSITE CIRC:"
+    @debug circ
+    
+    for block in subblocks
+        if Yao.nqubits(block) != expected_length
+            throw(ArgumentError("This module does not yet support blocks with different qubit lengths (" * string(block) * ")"))
+        end
     end
 
     if block_modified

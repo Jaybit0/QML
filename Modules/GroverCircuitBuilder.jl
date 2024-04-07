@@ -183,6 +183,12 @@ function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; 
         end
     end
 
+    if new_mapping_system && length(target_bits) > 1
+        circuit = compile_batch_training_circuit(circuit, target_bits)
+        target_lanes = circuit.model_lanes
+        target_bits = _flatten_output_bits(target_bits)
+    end
+
     oracle_lane = 1
 
     # If we use an additional grover-lane, we need to 
@@ -190,11 +196,11 @@ function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; 
     if _use_grover_lane(target_lanes) || length(target_bits) > 1
         circuit = create_checkpoint(circuit)
         # Push the oracle block to the circuit
-        oracle_lane = prepare(circuit, target_lanes, target_bits; new_mapping_system = new_mapping_system)
+        oracle_lane = prepare(circuit, target_lanes, target_bits; new_mapping_system = false)
 
         target_lanes = _map_lanes(circuit, circuit.current_checkpoint-1, target_lanes)
     else
-        oracle_lane = prepare(circuit, target_lanes, target_bits; new_mapping_system = new_mapping_system)
+        oracle_lane = prepare(circuit, target_lanes, target_bits; new_mapping_system = false)
     end
 
     circ_size = circuit_size(circuit)
@@ -597,11 +603,13 @@ function compile_circuit(circuit::GroverCircuit; inv::Bool = false)::Yao.YaoAPI.
     circ_size = circuit_size(circuit)
     m_circuit = inv ? reverse(circuit.circuit) : circuit.circuit
     m_meta = inv ? reverse(circuit.circuit_meta) : circuit.circuit_meta
+
     compiled_circuit = chain(circ_size)
 
     for (idx, block) in enumerate(m_circuit)
         compiled_block = compile_block(circuit, block, m_meta[idx], inv=inv)
-        compiled_circuit = chain(circ_size, put(1:circ_size => compiled_circuit), put(1:circ_size => compiled_block))
+        append!(Yao.subblocks(compiled_circuit), compiled_block)
+        #compiled_circuit = chain(circ_size, put(1:circ_size => compiled_circuit), put(1:circ_size => compiled_block))
     end
 
     return compiled_circuit
@@ -984,6 +992,9 @@ function _oracle_function(target_lanes::Vector{Int}, target_bits::Vector{Bool}):
 end
 
 function _map_lanes(circuit::GroverCircuit, checkpoint::Int, lanes::Vector{Int})::Vector{Int}
+    if checkpoint < 1
+        checkpoint = 1
+    end
     for i in checkpoint:length(circuit.lane_manipulators)
         lanes = map(circuit.lane_manipulators[i], lanes)
     end
