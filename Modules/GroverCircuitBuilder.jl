@@ -364,8 +364,8 @@ function trace_inversion_problem(circuit::GroverCircuit)
     end
 end
 
-function compile_batch_training_circuit(circuit::GroverCircuit, model_lanes::Union{AbstractRange, Vector{Int}, Int}, output_bits::Union{Vector, Bool})::Yao.AbstractBlock
-    target_lanes = _resolve_lanes(model_lanes)
+function compile_batch_training_circuit(circuit::GroverCircuit, output_bits::Union{Vector, Bool})::GroverCircuit
+    target_lanes = _resolve_lanes(model_lanes(circuit))
     target_bits = _resolve_output_bits(output_bits)
 
     # Then we don't use batch-training
@@ -376,10 +376,11 @@ function compile_batch_training_circuit(circuit::GroverCircuit, model_lanes::Uni
     num_batches = length(target_bits)
     lanes_per_batch = length(target_lanes)
     num_inserts = lanes_per_batch * (num_batches - 1)
+    new_circuit_size = circuit_size(circuit) + num_inserts
 
     # Now we compile the circuit and perform remapping on the compiled circuit
     compiled_circuit = compile_circuit(circuit)
-    compiled_circuit = chain(circuit_size(circuit) + num_inserts, put((num_inserts+1):(num_inserts+circuit_size(circuit)) => compiled_circuit))
+    compiled_circuit = chain(new_circuit_size, put((num_inserts+1):new_circuit_size => compiled_circuit))
 
     
     for batch in 2:num_batches
@@ -396,8 +397,13 @@ function compile_batch_training_circuit(circuit::GroverCircuit, model_lanes::Uni
 
     println("Compiled Circuit:")
     println(compiled_circuit)
+    new_circuit = empty_circuit(num_batches * lanes_per_batch, length(param_lanes(circuit)))
+    println(num_batches * lanes_per_batch + length(param_lanes(circuit)))
+    println(new_circuit_size)
+    println(compiled_circuit')
+    yao_block(new_circuit, [1:new_circuit_size], compiled_circuit)
 
-    return compiled_circuit
+    return new_circuit
 end
 
 """

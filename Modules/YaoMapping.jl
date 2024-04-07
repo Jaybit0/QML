@@ -1,4 +1,4 @@
-function remap(circ::Yao.PutBlock, mapping::Dict, expected_length::Int=Yao.nqubits(circ))::Tuple{Union{Union{Yao.AbstractBlock, Function}, Nothing}, Bool}     
+function remap(circ::Yao.PutBlock, mapping::Dict, expected_length::Int=Yao.nqubits(circ))::Tuple{Union{Union{Yao.AbstractBlock, Function}, Nothing}, Union{Union{Yao.AbstractBlock, Function}, Nothing}}     
     @debug ""
     @debug "===== PUT ====="
     @debug circ
@@ -19,9 +19,14 @@ function remap(circ::Yao.PutBlock, mapping::Dict, expected_length::Int=Yao.nqubi
         end
     end
 
-    if length(insert_locs) == 0 
+    if length(insert_locs) == 0 && expected_length == Yao.nqubits(circ)
+        if expected_length != Yao.nqubits(circ)
+            @debug "DIMENSION MISMATCH: RECOMPILATION REQUIRED (NO INSERTIONS)"
+            return Yao.put(circ.locs => Yao.subblocks(circ)[1])(expected_length), nothing
+        end
+
         @debug "NOTHING TO DO"
-        return nothing, true
+        return nothing, nothing
     elseif length(insert_locs) != length(circ.locs)
         @debug "INJECTION BY REPLACEMENT"
         @debug "RECURSIVE CALL REQUIRED"
@@ -53,13 +58,10 @@ function remap(circ::Yao.PutBlock, mapping::Dict, expected_length::Int=Yao.nqubi
         if inserted
             @debug "DIMENSION MISMATCH: RECOMPILATION REQUIRED"
             cpy = Yao.copy(Yao.subblocks(circ)[1])
-            new_cpy, _ = remap(cpy, new_mapping, length(new_locs))
-            new_put = Yao.put(new_locs => new_cpy)(length(new_locs))
+            new_cpy, _ = remap(cpy, new_mapping, expected_length)
+            new_put = Yao.put(new_locs => new_cpy)(expected_length)
         end
-        return new_put, false
-    elseif length(insert_locs) != expected_length
-        @debug "DIMENSION MISMATCH: RECOMPILATION REQUIRED"
-        return Yao.put(insert_locs => Yao.copy(Yao.subblocks(circ)[1]))(expected_length), true
+        return new_put, nothing
     else
         if length(Yao.subblocks(circ)) != 1
             throw(ArgumentError("This module does not yet support multiple subblocks"))
@@ -67,13 +69,14 @@ function remap(circ::Yao.PutBlock, mapping::Dict, expected_length::Int=Yao.nqubi
 
         @debug "INJECTION BY DUPLICATION"
         
-        return Yao.put(insert_locs => Yao.copy(Yao.subblocks(circ)[1]))(Yao.nqubits(circ)), true
+        return Yao.put(circ.locs => Yao.subblocks(circ)[1])(expected_length), Yao.put(insert_locs => Yao.copy(Yao.subblocks(circ)[1]))(expected_length)
     end
 end
 
-function remap(circ::Yao.ControlBlock, mapping::Dict, expected_length::Int=Yao.nqubits(circ))::Tuple{Union{Union{Yao.AbstractBlock, Function}, Nothing}, Bool}
+function remap(circ::Yao.ControlBlock, mapping::Dict, expected_length::Int=Yao.nqubits(circ))::Tuple{Union{Union{Yao.AbstractBlock, Function}, Nothing}, Union{Union{Yao.AbstractBlock, Function}, Nothing}}
     @debug ""
     @debug "===== CONTROL ====="
+    @debug "Mapping: $mapping"
     @debug circ
 
     # Here we need to insert a new location to put according to the mapping
@@ -106,9 +109,14 @@ function remap(circ::Yao.ControlBlock, mapping::Dict, expected_length::Int=Yao.n
         
     end
 
-    if length(insert_locs) == 0 
+    if length(insert_locs) == 0
+        if expected_length != Yao.nqubits(circ)
+            @debug "DIMENSION MISMATCH: RECOMPILATION REQUIRED (NO INSERTIONS)"
+            return Yao.control(circ.ctrl_locs, circ.locs => Yao.subblocks(circ)[1])(expected_length), nothing
+        end
+
         @debug "NOTHING TO DO"
-        return nothing, true
+        return nothing, nothing
     elseif length(insert_locs) != length(circ.locs)
         @debug "INJECTION BY REPLACEMENT"
         @debug "RECURSIVE CALL REQUIRED"
@@ -140,22 +148,20 @@ function remap(circ::Yao.ControlBlock, mapping::Dict, expected_length::Int=Yao.n
         if inserted
             @debug "DIMENSION MISMATCH: RECOMPILATION REQUIRED"
             cpy = Yao.copy(Yao.subblocks(circ)[1])
-            new_cpy, _ = remap(cpy, new_mapping, length(new_locs))
+            new_cpy, _ = remap(cpy, new_mapping, expected_length)
             new_put = Yao.control(new_ctrl_locs, new_locs => new_cpy)(expected_length)
         end
-        return new_put, false
+        return new_put, nothing
     else
         if length(Yao.subblocks(circ)) != 1
             throw(ArgumentError("This module does not yet support multiple subblocks"))
         end
         
-        return Yao.control(new_ctrl_locs, insert_locs => Yao.copy(Yao.subblocks(circ)[1]))(expected_length), true
+        return Yao.control(circ.ctrl_locs, circ.locs => Yao.subblocks(circ)[1])(expected_length), Yao.control(new_ctrl_locs, insert_locs => Yao.copy(Yao.subblocks(circ)[1]))(expected_length)
     end
-
-    return nothing, true
 end
 
-function remap(circ::Yao.RepeatedBlock, mapping::Dict, expected_length::Int=Yao.nqubits(circ))::Tuple{Union{Union{Yao.AbstractBlock, Function}, Nothing}, Bool}
+function remap(circ::Yao.RepeatedBlock, mapping::Dict, expected_length::Int=Yao.nqubits(circ))::Tuple{Union{Union{Yao.AbstractBlock, Function}, Nothing}, Union{Union{Yao.AbstractBlock, Function}, Nothing}}
     @debug ""
     @debug "===== REPEATED ====="
     @debug circ
@@ -177,16 +183,16 @@ function remap(circ::Yao.RepeatedBlock, mapping::Dict, expected_length::Int=Yao.
         end
     end
 
-    if length(insert_locs) == 0 
+    if length(insert_locs) == 0 && expected_length == Yao.nqubits(circ)
         @debug "NOTHING TO DO"
-        return nothing, true
+        return nothing, nothing
     else
         @debug "DIMENSION MISMATCH: RECOMPILATION REQUIRED"
-        return Yao.repeat(expected_length, Yao.copy(Yao.subblocks(circ)[1]), true_locs), true
+        return Yao.repeat(expected_length, Yao.copy(Yao.subblocks(circ)[1]), true_locs), nothing
     end
 end
 
-function remap(circ::Yao.CompositeBlock, mapping::Dict, expected_length::Int=Yao.nqubits(circ))::Tuple{Union{Union{Yao.AbstractBlock, Function}, Nothing}, Bool}
+function remap(circ::Yao.CompositeBlock, mapping::Dict, expected_length::Int=Yao.nqubits(circ))::Tuple{Union{Union{Yao.AbstractBlock, Function}, Nothing}, Union{Union{Yao.AbstractBlock, Function}, Nothing}}
     @debug ""
     @debug "===== COMPOSITE ====="
     @debug circ
@@ -211,23 +217,25 @@ function remap(circ::Yao.CompositeBlock, mapping::Dict, expected_length::Int=Yao
             inserted = false
             continue
         end
+
         @debug "Remapping subblock $i"
-        mblock, should_duplicate = remap(subblock, mapping, Yao.nqubits(circ))
+        mblock, mblock_duplicate = remap(subblock, mapping, expected_length)
+
         if !isnothing(mblock)
-            if should_duplicate
-                insert!(subblocks, i+1, mblock)
-                inserted = true
-            else
-                subblocks[i] = mblock
-            end
+            subblocks[i] = mblock
         end
+
+        if !isnothing(mblock_duplicate)
+            insert!(subblocks, i+1, mblock_duplicate)
+            inserted = true
+        end        
     end
 
     if block_modified
-        return circ, false
+        return circ, nothing
     end
 
-    return nothing, true
+    return nothing, nothing
 end
 
 function remap(circ::Yao.AbstractBlock, mapping::Dict, expected_length::Int=Yao.nqubits(circ))::Tuple{Union{Union{Yao.AbstractBlock, Function}, Nothing}, Bool}
