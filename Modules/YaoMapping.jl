@@ -144,7 +144,6 @@ function remap(circ::Yao.ControlBlock, mapping::Dict, expected_length::Int=Yao.n
             new_put = Yao.control(new_ctrl_locs, new_locs => new_cpy)(expected_length)
         end
         return new_put, false
-        #throw(ArgumentError("This module does not yet support partial remapping of the control block"))
     else
         if length(Yao.subblocks(circ)) != 1
             throw(ArgumentError("This module does not yet support multiple subblocks"))
@@ -154,6 +153,37 @@ function remap(circ::Yao.ControlBlock, mapping::Dict, expected_length::Int=Yao.n
     end
 
     return nothing, true
+end
+
+function remap(circ::Yao.RepeatedBlock, mapping::Dict, expected_length::Int=Yao.nqubits(circ))::Tuple{Union{Union{Yao.AbstractBlock, Function}, Nothing}, Bool}
+    @debug ""
+    @debug "===== REPEATED ====="
+    @debug circ
+
+    # Here we need to insert a new location to put according to the mapping
+    insert_locs = []
+    true_locs = []
+
+    # Enumerate through all locations
+    for (_, loc) in enumerate(circ.locs)
+        
+        if haskey(mapping, loc)
+            # If the location is in the mapping, we need to insert a new location
+            # according to the mapping
+            append!(insert_locs, mapping[loc])
+            append!(true_locs, loc)
+        else
+            append!(true_locs, loc)
+        end
+    end
+
+    if length(insert_locs) == 0 
+        @debug "NOTHING TO DO"
+        return nothing, true
+    else
+        @debug "DIMENSION MISMATCH: RECOMPILATION REQUIRED"
+        return Yao.repeat(expected_length, Yao.copy(Yao.subblocks(circ)[1]), true_locs), true
+    end
 end
 
 function remap(circ::Yao.CompositeBlock, mapping::Dict, expected_length::Int=Yao.nqubits(circ))::Tuple{Union{Union{Yao.AbstractBlock, Function}, Nothing}, Bool}

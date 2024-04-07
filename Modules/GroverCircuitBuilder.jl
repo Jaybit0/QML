@@ -1,4 +1,5 @@
 include("./GroverMLFunctions.jl")
+include("./YaoMapping.jl")
 
 using Yao
 
@@ -12,6 +13,7 @@ export empty_circuit;
 export circuit_size;
 export model_lanes;
 export param_lanes;
+export compile_batch_training_circuit;
 export prepare;
 export unprepare;
 export create_checkpoint;
@@ -164,7 +166,7 @@ A tuple containing the following elements:
 - `grover_circuit::Yao.YaoAPI.AbstractBlock`: The generated grover circuit with either the optimal number of iterations, the number of `forced_grover_iterations` if not `nothing`, or a single iteration if `evaluate == false`
 - `oracle_function::Function`: The function that returns `true` if and only if the corresponding state index is a target state
 """
-function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; forced_grover_iterations::Union{Int, Nothing} = nothing, ignore_errors::Bool = true, evaluate::Bool = true, log::Bool = true)::Tuple{Union{Yao.ArrayReg, Nothing}, Yao.YaoAPI.AbstractBlock, Yao.YaoAPI.AbstractBlock, Function}
+function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; forced_grover_iterations::Union{Int, Nothing} = nothing, ignore_errors::Bool = true, evaluate::Bool = true, log::Bool = true, new_mapping_system = false)::Tuple{Union{Yao.ArrayReg, Nothing}, Yao.YaoAPI.AbstractBlock, Yao.YaoAPI.AbstractBlock, Function}
     log && @info "Simulating grover circuit..."
 
     # Map the corresponding types to Vector{Int}
@@ -188,11 +190,11 @@ function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; 
     if _use_grover_lane(target_lanes) || length(target_bits) > 1
         circuit = create_checkpoint(circuit)
         # Push the oracle block to the circuit
-        oracle_lane = prepare(circuit, target_lanes, target_bits)
+        oracle_lane = prepare(circuit, target_lanes, target_bits; new_mapping_system = new_mapping_system)
 
         target_lanes = _map_lanes(circuit, circuit.current_checkpoint-1, target_lanes)
     else
-        oracle_lane = prepare(circuit, target_lanes, target_bits)
+        oracle_lane = prepare(circuit, target_lanes, target_bits; new_mapping_system = new_mapping_system)
     end
 
     circ_size = circuit_size(circuit)
@@ -362,10 +364,46 @@ function trace_inversion_problem(circuit::GroverCircuit)
     end
 end
 
+function compile_batch_training_circuit(circuit::GroverCircuit, model_lanes::Union{AbstractRange, Vector{Int}, Int}, output_bits::Union{Vector, Bool})::Yao.AbstractBlock
+    target_lanes = _resolve_lanes(model_lanes)
+    target_bits = _resolve_output_bits(output_bits)
+
+    # Then we don't use batch-training
+    if length(target_bits) <= 1
+        return circuit
+    end
+
+    num_batches = length(target_bits)
+    lanes_per_batch = length(target_lanes)
+    num_inserts = lanes_per_batch * (num_batches - 1)
+
+    # Now we compile the circuit and perform remapping on the compiled circuit
+    compiled_circuit = compile_circuit(circuit)
+    compiled_circuit = chain(circuit_size(circuit) + num_inserts, put((num_inserts+1):(num_inserts+circuit_size(circuit)) => compiled_circuit))
+
+    
+    for batch in 2:num_batches
+        remapping_dictionary = Dict()
+
+        println(target_lanes)
+        for (i, lane) in enumerate(target_lanes)
+            remapping_dictionary[lane + num_inserts] = i + (batch-2)*lanes_per_batch
+        end
+
+        println(remapping_dictionary)
+        remap(compiled_circuit, remapping_dictionary)
+    end
+
+    println("Compiled Circuit:")
+    println(compiled_circuit)
+
+    return compiled_circuit
+end
+
 """
 Prepares a cricuit and inserts a target lane which is used as the oracle function.
 """
-function prepare(circuit::GroverCircuit, model_lanes::Union{AbstractRange, Vector{Int}, Int}, output_bits::Union{Vector, Bool}; insert_lane_at::Union{Int, Nothing} = nothing)::Int
+function prepare(circuit::GroverCircuit, model_lanes::Union{AbstractRange, Vector{Int}, Int}, output_bits::Union{Vector, Bool}; insert_lane_at::Union{Int, Nothing} = nothing, new_mapping_system = false)::Int
     target_lanes = _resolve_lanes(model_lanes)
     target_bits = _resolve_output_bits(output_bits)
 
