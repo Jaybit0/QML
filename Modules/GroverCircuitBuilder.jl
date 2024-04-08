@@ -597,12 +597,15 @@ function compile_circuit(circuit::GroverCircuit; inv::Bool = false)::Yao.YaoAPI.
     m_circuit = inv ? reverse(circuit.circuit) : circuit.circuit
     m_meta = inv ? reverse(circuit.circuit_meta) : circuit.circuit_meta
 
+    if length(m_circuit) == 1
+        return compile_block(circuit, m_circuit[1], m_meta[1], inv=inv)
+    end
+
     compiled_circuit = chain(circ_size)
 
     for (idx, block) in enumerate(m_circuit)
         compiled_block = compile_block(circuit, block, m_meta[idx], inv=inv)
         append!(Yao.subblocks(compiled_circuit), compiled_block)
-        #compiled_circuit = chain(circ_size, put(1:circ_size => compiled_circuit), put(1:circ_size => compiled_block))
     end
 
     return compiled_circuit
@@ -891,8 +894,18 @@ function _compile_yao_block(circuit::GroverCircuit, block::YaoBlock, meta::Block
         m_circ = chain(circ_size)
 
         for l in lanes
-            m_circ = chain(circ_size, put(1:circ_size => m_circ), put(l => inv ? block.inv_block : block.block))
+            # Check if l is 1:circ_size, then we can save a put block
+            if l == collect(1:circ_size)
+                append!(Yao.subblocks(m_circ), [inv ? block.inv_block : block.block])
+            else
+                append!(Yao.subblocks(m_circ), [put(circ_size, l => inv ? block.inv_block : block.block)])
+            end
         end
+
+        if length(lanes) == 1
+            return Yao.subblocks(m_circ)[1]
+        end
+        
         return m_circ
     end
 

@@ -26,11 +26,10 @@ target_lane = 1
 # We expect the first lane to return true
 grover_circ = empty_circuit(1, 3)
 yao_block(grover_circ, [1:4], mcirc)
-#criterion = [true]
-out, main_circ, grov, oracle_function = auto_compute(grover_circ, [[true], [false], [true], [true], [true]], new_mapping_system = true)#, evaluate = false)
+#out, main_circ, grov, oracle_function = auto_compute(grover_circ, [[true], [false], [true], [true], [true]], new_mapping_system = true)#, evaluate = false)
 
 # Vizualize the main circuit
-vizcircuit(main_circ)
+println(compile_circuit(grover_circ))
 # Uncomment this to vizualize the measured results
 #measured = out |> r->measure(r; nshots=100000)
 #plotmeasure(measured; oracle_function=oracle_function, sort=true, num_entries=14)
