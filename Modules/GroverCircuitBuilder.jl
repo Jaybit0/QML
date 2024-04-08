@@ -605,7 +605,7 @@ function compile_circuit(circuit::GroverCircuit; inv::Bool = false)::Yao.YaoAPI.
 
     for (idx, block) in enumerate(m_circuit)
         compiled_block = compile_block(circuit, block, m_meta[idx], inv=inv)
-        append!(Yao.subblocks(compiled_circuit), compiled_block)
+        append!(Yao.subblocks(compiled_circuit), [compiled_block])
     end
 
     return compiled_circuit
@@ -905,7 +905,7 @@ function _compile_yao_block(circuit::GroverCircuit, block::YaoBlock, meta::Block
         if length(lanes) == 1
             return Yao.subblocks(m_circ)[1]
         end
-        
+
         return m_circ
     end
 
