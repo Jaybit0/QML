@@ -392,21 +392,14 @@ function compile_batch_training_circuit(circuit::GroverCircuit, output_bits::Uni
     for batch in 2:num_batches
         remapping_dictionary = Dict()
 
-        println(target_lanes)
         for (i, lane) in enumerate(target_lanes)
             remapping_dictionary[lane + num_inserts] = i + (batch-2)*lanes_per_batch
         end
 
-        println(remapping_dictionary)
         remap(compiled_circuit, remapping_dictionary)
     end
 
-    println("Compiled Circuit:")
-    println(compiled_circuit)
     new_circuit = empty_circuit(num_batches * lanes_per_batch, length(param_lanes(circuit)))
-    println(num_batches * lanes_per_batch + length(param_lanes(circuit)))
-    println(new_circuit_size)
-    println(compiled_circuit')
     yao_block(new_circuit, [1:new_circuit_size], compiled_circuit)
 
     return new_circuit

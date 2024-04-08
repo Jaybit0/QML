@@ -56,9 +56,8 @@ function remap(circ::Yao.PutBlock, mapping::Dict, expected_length::Int=Yao.nqubi
 
         new_put = circ
         if inserted
-            @debug "DIMENSION MISMATCH: RECOMPILATION REQUIRED"
             cpy = Yao.copy(Yao.subblocks(circ)[1])
-            new_cpy, _ = remap(cpy, new_mapping, expected_length)
+            new_cpy, _ = remap(cpy, new_mapping, length(new_locs))
             new_put = Yao.put(new_locs => new_cpy)(expected_length)
         end
         return new_put, nothing
@@ -148,7 +147,7 @@ function remap(circ::Yao.ControlBlock, mapping::Dict, expected_length::Int=Yao.n
         if inserted
             @debug "DIMENSION MISMATCH: RECOMPILATION REQUIRED"
             cpy = Yao.copy(Yao.subblocks(circ)[1])
-            new_cpy, _ = remap(cpy, new_mapping, expected_length)
+            new_cpy, _ = remap(cpy, new_mapping, length(new_locs))
             new_put = Yao.control(new_ctrl_locs, new_locs => new_cpy)(expected_length)
         end
         return new_put, nothing
