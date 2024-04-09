@@ -20,7 +20,6 @@ param_lanes = 2:4
 
 grover = GroverMLBlock(mcirc, model_lane, param_lanes, [[true], [false], [true], [true], [true]]; log=true, grover_iterations=1)
 
-
 println(grover.compiled_circuit.main_circuit)
 # Vizualize the main circuit
 vizcircuit(grover)

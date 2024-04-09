@@ -938,7 +938,8 @@ function _compile_oracle_block(circuit::GroverCircuit, block::OracleBlock, meta:
 
     for (idx, lane) in enum
         if !block.target_bits[idx]
-            x_gates = chain(circ_size, put(1:circ_size => x_gates), put(lane => X))
+            append!(Yao.subblocks(x_gates), [put(circ_size, lane => X)])
+            #x_gates = chain(circ_size, put(1:circ_size => x_gates), put(lane => X))
         end
     end
 
