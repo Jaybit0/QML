@@ -165,8 +165,9 @@ A tuple containing the following elements:
 - `main_circuit::Yao.YaoAPI.AbstractBlock`: The main circuit that was specified using the grover circuit builder
 - `grover_circuit::Yao.YaoAPI.AbstractBlock`: The generated grover circuit with either the optimal number of iterations, the number of `forced_grover_iterations` if not `nothing`, or a single iteration if `evaluate == false`
 - `oracle_function::Function`: The function that returns `true` if and only if the corresponding state index is a target state
+- `num_grover_iterations::Int`: The actual number of grover iterations that were applied
 """
-function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; forced_grover_iterations::Union{Int, Nothing} = nothing, ignore_errors::Bool = true, evaluate::Bool = true, log::Bool = true, new_mapping_system = false)::Tuple{Union{Yao.ArrayReg, Nothing}, Yao.YaoAPI.AbstractBlock, Yao.YaoAPI.AbstractBlock, Function}
+function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; forced_grover_iterations::Union{Int, Nothing} = nothing, ignore_errors::Bool = true, evaluate::Bool = true, log::Bool = true, new_mapping_system = false, evaluate_optimal_grover_n = false)::Tuple{Union{Yao.ArrayReg, Nothing}, Yao.YaoAPI.AbstractBlock, Yao.YaoAPI.AbstractBlock, Function, Int}
     log && @info "Simulating grover circuit..."
 
     # Map the corresponding types to Vector{Int}
@@ -215,7 +216,7 @@ function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; 
 
     # Gate the zero state through the main circuit
     out = nothing
-    if evaluate
+    if evaluate || evaluate_optimal_grover_n
         if log
             @info "Evaluating main circuit..."
         end
@@ -232,10 +233,10 @@ function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; 
 
     # Compute the probability of the target state after applying the main circuit
     cumulative_pre_probability = nothing 
-    if evaluate 
+    if evaluate || evaluate_optimal_grover_n
         cumulative_pre_probability = computeCumProb(out, oracle_function)
     else
-        return nothing, main_circuit, createGroverCircuit(circ_size, isnothing(forced_grover_iterations) ? 1 : forced_grover_iterations, build_grover_iteration(circuit, oracle_lane, _use_grover_lane(target_lanes) ? true : target_bits[1][1][2])), oracle_function
+        return nothing, main_circuit, createGroverCircuit(circ_size, isnothing(forced_grover_iterations) ? 1 : forced_grover_iterations, build_grover_iteration(circuit, oracle_lane, _use_grover_lane(target_lanes) ? true : target_bits[1][1][2])), oracle_function, isnothing(forced_grover_iterations) ? 1 : forced_grover_iterations
     end
 
     log && @info "Cumulative Pre-Probability: $cumulative_pre_probability"
@@ -321,7 +322,7 @@ function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; 
         trace_inversion_problem(circuit)
     end
 
-    return out, main_circuit, grover_circuit, oracle_function
+    return out, main_circuit, grover_circuit, oracle_function, actual_grover_iterations
 end
 
 """

@@ -1,3 +1,5 @@
+include("./YaoSupport.jl")
+
 using StatsBase: Histogram, fit
 using Plots: bar, scatter!, gr; gr()
 using BitBasis
@@ -5,6 +7,12 @@ using YaoPlots
 
 export plotmeasure
 export configureYaoPlots
+
+function plotmeasure(grover_block::GroverMLBlock; sort=false, num_entries=nothing)
+	register = zero_state(Yao.nqubits(grover_block))
+	measured = register |> grover_block |> r->measure(r; nshots=100000)
+	plotmeasure(measured; oracle_function=grover_block.compiled_circuit.oracle_function, sort=sort, num_entries=num_entries)
+end
 
 function plotmeasure(x::Array{BitStr{n,Int},1}; oracle_function::Union{Function, Nothing} = nothing, sort=false, num_entries=nothing) where n
 	xInt = Int.(x)
