@@ -180,7 +180,7 @@ function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; 
 
     for out_bits in target_bits
         if length(out_bits) != length(target_lanes)
-            throw(DomainError(out_bits, "The number of output bits must match the number of target lanes"))
+            throw(DomainError(out_bits, "The number of output bits must match the number of model lanes"))
         end
     end
 

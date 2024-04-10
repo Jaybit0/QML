@@ -1,45 +1,28 @@
 # ======== IMPORTS ========
 # =========================
 
-include("../Modules/GroverML.jl")
-include("../Modules/GroverCircuitBuilder.jl")
-include("../Modules/GroverPlotting.jl")
+if !isdefined(Main, :GroverML)
+    include("../Modules/GroverML.jl")
+    using .GroverML
+end
 
 using Yao
 using Yao.EasyBuild, YaoPlots
-using .GroverML
-using .GroverCircuitBuilder
-using .GroverPlotting
 
 # ========== CODE ==========
 # ==========================
 
-# Initialize an empty circuit with 2 target lanes and 4 model lanes
-grover_circ = empty_circuit(2, 4)
+# Initialize an empty circuit with 2 target lane and 3 model lanes
+mcirc = chain(6, repeat(6, H, 3:6), control(3, 1=>Ry(π)), control(4, 1=>Ry(π/2)), control(1, 2=>X), control((5, 1), 2=>Ry(π)),
+                control((6, 1), 2=>Ry(π/2)))
 
-# Apply Hadamard Gates on the lanes 3 -> 6
-hadamard(grover_circ, 3:6)
+model_lanes = 1:2
+param_lanes = 3:6
 
-# Apply 3 controlled rotations on the first lane with a granularity of pi/4 (max_rotation_rad / 2^length(control_lanes))
-block, meta = learned_rotation(grover_circ, 1, 3:5)
-meta.data["batch"] = 1
-meta.data["lane"] = 1
-meta.manipulator(block, meta, inv) = meta.data["batch"] == 1
-# Apply 1 controlled rotation on the second lane with a granularity of pi (max_rotation_rad / 2^length(control_lanes))
-learned_rotation(grover_circ, 2, 6)
+grover = GroverMLBlock(mcirc, model_lanes, param_lanes, [[true, true], [true, false]]; log=true, grover_iterations=nothing)
 
-# Apply a controlled negation to the second lane
-not(grover_circ, 2; control_lanes = 1)
-
-# We expect the first lane to return true and the second lane to return false
-# As we use multiple target lanes, auto_compute automatically inserts a lane below the target lanes which encode the criterions to this lane
-# The reflection is done with respect to the inserted lane
-criterion = [true, true]
-out, main_circ, grov, oracle_function = auto_compute(grover_circ, criterion, evaluate = true)
-
-# Visualize the main circuit
-vizcircuit(main_circ)
+# Vizualize the main circuit
+vizcircuit(grover.compiled_circuit.main_circuit)
 
 # Uncomment this to vizualize the measured results
-#measured = out |> r->measure(r; nshots=100000)
-#plotmeasure(measured; oracle_function=oracle_function, sort=true, num_entries=10)
+#plotmeasure(grover; sort=true, num_entries=14)
