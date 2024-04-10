@@ -290,6 +290,11 @@ function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; 
     end
     # Create the grover circuit to amplify the amplitude
     grover_circuit = createGroverCircuit(circ_size, actual_grover_iterations, build_grover_iteration(circuit, oracle_lane, _use_grover_lane(target_lanes) ? true : target_bits[1][1][2]))
+    if evaluate_optimal_grover_n
+        pred_cum_prob = computePostGroverLikelihood(computeAngle(cumulative_pre_probability), actual_grover_iterations)
+        log &&@info "Predicted likelihood after $(actual_grover_iterations)x Grover: $pred_cum_prob"
+        return out, main_circuit, grover_circuit, oracle_function, actual_grover_iterations
+    end
     if log
         @info "Grover circuit compiled"
 

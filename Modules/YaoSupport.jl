@@ -23,7 +23,7 @@ struct GroverMLBlock{D} <: CompositeBlock{D}
     compiled_circuit::CompiledGroverCircuit
 end
 
-function GroverMLBlock(circuit::AbstractBlock, model_lanes::Union{Vector, AbstractRange, Int}, param_lanes::Union{AbstractRange, Vector, Int}, output_bits::Union{Vector, Bool}; grover_iterations::Union{Int, Nothing}=nothing, log::Bool=false)
+function GroverMLBlock(circuit::AbstractBlock, model_lanes::Union{Vector, AbstractRange, Int}, param_lanes::Union{AbstractRange, Vector, Int}, output_bits::Union{Vector, Bool}; grover_iterations::Union{Int, Nothing}=nothing, log::Bool=false, evaluate::Bool=false)
     block_size = nqubits(circuit)
     
     if isa(model_lanes, Int)
@@ -41,7 +41,7 @@ function GroverMLBlock(circuit::AbstractBlock, model_lanes::Union{Vector, Abstra
     mcircuit = empty_circuit(model_lanes, param_lanes)
     yao_block(mcircuit, [1:block_size], circuit)
 
-    out, main_circuit, grover_circuit, oracle_function, actual_grover_iterations = auto_compute(mcircuit, output_bits; forced_grover_iterations=grover_iterations, evaluate=false, log=log, new_mapping_system=true, evaluate_optimal_grover_n=isnothing(grover_iterations))
+    out, main_circuit, grover_circuit, oracle_function, actual_grover_iterations = auto_compute(mcircuit, output_bits; forced_grover_iterations=grover_iterations, evaluate=evaluate, log=log, new_mapping_system=true, evaluate_optimal_grover_n=isnothing(grover_iterations))
     compiled_circuit = CompiledGroverCircuit(out, main_circuit, grover_circuit, oracle_function)
 
     return GroverMLBlock{nqubits(compiled_circuit.main_circuit)}(mcircuit, output_bits, actual_grover_iterations, compiled_circuit)
