@@ -167,7 +167,7 @@ A tuple containing the following elements:
 - `oracle_function::Function`: The function that returns `true` if and only if the corresponding state index is a target state
 - `num_grover_iterations::Int`: The actual number of grover iterations that were applied
 """
-function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; forced_grover_iterations::Union{Int, Nothing} = nothing, ignore_errors::Bool = true, evaluate::Bool = true, log::Bool = true, new_mapping_system = false, evaluate_optimal_grover_n = false)::Tuple{Union{Yao.ArrayReg, Nothing}, Yao.YaoAPI.AbstractBlock, Yao.YaoAPI.AbstractBlock, Function, Int}
+function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; forced_grover_iterations::Union{Int, Nothing} = nothing, ignore_errors::Bool = true, evaluate::Bool = true, log::Bool = true, new_mapping_system = false, evaluate_optimal_grover_n = false, start_register::Union{Yao.ArrayReg, Nothing} = nothing)::Tuple{Union{Yao.ArrayReg, Nothing}, Yao.YaoAPI.AbstractBlock, Yao.YaoAPI.AbstractBlock, Function, Int}
     log && @info "Simulating grover circuit..."
 
     # Map the corresponding types to Vector{Int}
@@ -207,7 +207,11 @@ function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; 
     circ_size = circuit_size(circuit)
 
     # Initialize a zero-state (|0^(circuit_size)>)
-    register = zero_state(circ_size)
+    if isnothing(start_register)
+        register = zero_state(circ_size)
+    else
+        register = start_register
+    end
 
     # We first create the main circuit to determine the probability of the target state
     main_circuit = compile_circuit(circuit)

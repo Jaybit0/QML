@@ -18,14 +18,14 @@ mcirc = chain(4, repeat(4, H, 2:4), control(2, 1=>Ry(π)), control(3, 1=>Ry(π/2
 model_lane = 1
 param_lanes = 2:4
 
-grover = GroverMLBlock(mcirc, model_lane, param_lanes, [[true], [false], [true], [true], [true]]; log=true, grover_iterations=1)
+grover = GroverMLBlock(mcirc, model_lane, param_lanes, [[true], [false], [true], [true], [true]]; log=true)
 
 #println(grover.compiled_circuit.main_circuit)
 # Vizualize the main circuit
-vizcircuit(grover)
+#vizcircuit(grover.compiled_circuit.main_circuit)
 
 # Uncomment this to vizualize the measured results
 #register = zero_state(Yao.nqubits(grover))
 #measured = register |> grover |> r->measure(r; nshots=100000)
 #plotmeasure(measured; oracle_function=grover.compiled_circuit.oracle_function, sort=true, num_entries=14)
-#plotmeasure(grover; sort=true, num_entries=14)
+plotmeasure(grover; sort=true, num_entries=14)
