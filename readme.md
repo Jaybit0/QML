@@ -96,15 +96,50 @@ Circuit creation is mainly done using `Yao`. There are legacy functions that can
 
 ### Generating a QML circuit
 
-You can convert your circuit into a QML circuit using a `QMLBlock`.
+You can convert your circuit into a QML circuit using a `QMLBlock`. This block requires you to provide a circuit, the indices of the model lanes, parameter lanes, and the training data. There are several options how to provide the training data. Let's take a look at a basic example:
+
+Assume we want to train a model to learn the `X` gate. Let us define a model with one model lane and two parameter lanes. In our model, we want an `X` gate to be applied, iff both parameters are in the state `|1>`.
 
 ```julia
-# Initialize a circuit with 1 model and 1 parameter lane
+# Initialize a circuit with 1 model and 2 parameter lane
 circuit = chain(3, repeat(H, (2, 3)), control(2:3, 1 => X))
 
 model_lanes = 1
 param_lanes = 2:3
+```
 
+Now, let's train the model on the tuple `(false, true)`, meaning that we want to map the `|0>` state to `|1>`. For that, let us prepare the training data. Note that we are supposed to provide a batch of features. In this case, we only have one feature.
+
+```julia
+# We want to fit the model on this tuple
+training_tuple = (false, true)
+
+# The feature size must match the number of model lanes
+feature = [training_tuple]
+
+# We define a batch of our single feature
+batch = [feature]
+```
+
+Note that if we have a tuple `(false, ?)`, we can do not have to provide the tuple, but can provide a single boolean value instead. So the following code would be equivalent:
+
+```julia
+# The feature size must match the number of model lanes
+feature = [true]
+
+# We define a batch of our single feature
+batch = [feature]
+```
+
+Now, we can create a `QMLBlock`. This will then automatically determine the optimal number of Grover iterations and apply them to the circuit. If we then measure the quantum register, we should extract the correct state `|111>`.
+
+```julia
+qml = QMLBlock(circuit, model_lanes, param_lanes, batch; log=true)
+```
+
+Let's make the example a bit more complex by fitting the model on two training tuples. As we want to learn the `X` gate, we could additionally provide the tuple `(true, false)`. This will not change anything in the learned parameters, but it will demonstrate how to provide multiple training tuples. Again, let's prepare the training data and create the QML model.
+
+```julia
 # We want to fit the model on those two tuples
 training_tuple_1 = (false, true)
 training_tuple_2 = (true, false)
@@ -114,20 +149,32 @@ feature_1 = [training_tuple_1]
 feature_2 = [training_tuple_2]
 batch = [feature_1, feature_2]
 
-grover = QMLBlock(circuit, model_lanes, param_lanes, batch)
+grover = QMLBlock(circuit, model_lanes, param_lanes, batch; log=true)
 ```
 
+Note that if we create a `QMLBlock` without providing the number of Grover iterations, the module will simulate the circuit to determine the optimal number of Grover iterations. For larger circuits, this can be time-consuming. If you know the optimal number of Grover iterations, you can provide it as an argument. For instance, if you know that the optimal number of Grover iterations is `1`, you can create the `QMLBlock` as follows:
 
+```julia
+grover = QMLBlock(circuit, model_lanes, param_lanes, batch; log=true, grover_iterations=1)
+```
 
 ### Visualizing a circuit
 
 You can visualize a circuit using the function `vizcircuit`.
 
 ```julia
-vizcircuit(my_circuit)
+vizcircuit(grover)
 ```
 
-### Visualize measurements
+If you want to visualize the built main circuit (without the amplitude amplification), you can create a `QMLBlock` with specifying `0` grover iterations.
+
+```julia
+grover = QMLBlock(circuit, model_lanes, param_lanes, batch; grover_iterations=0)
+
+vizcircuit(grover)
+```
+
+### Visualizing measurements
 
 You can visualize the measurements of a circuit using the function `plotmeasure`. This function takes any number of measurements and plots them in a bar chart.
 
@@ -135,15 +182,14 @@ You can visualize the measurements of a circuit using the function `plotmeasure`
 plotmeasure(measurements)
 ```
 
-For example, let's measure a learned rotation after applying Hadamard gates on the `model lanes`.
+For example, let's measure a the circuit from the previous example.
 
 ```julia
-grover_circ = empty_circuit(1, 2)
+# Initialize a circuit with 1 model and 2 parameter lane
+my_circuit = chain(3, repeat(H, (2, 3)), control(2:3, 1 => X))
 
-hadamard(grover_circ, 2:3)
-learned_rotation(grover_circ, 1, 2:3)
-
-my_circuit = compile_circuit(grover_circ)
+model_lanes = 1
+param_lanes = 2:3
 ```
 
 Now, we visualize the circuit:
@@ -163,9 +209,27 @@ plotmeasure(measurements)
 
 ![vm2](imgs/visualize_measurements2.svg)
 
+To be able to validate the model, we can also highlight the desired in another color. The most comfortable way to do this is to directly provide the `QMLBlock`. As the `QMLBlock` knows the desired state, the function will automatically highlight the desired states. Let's visualize the distribution without training the model:
+
+```julia
+qml = QMLBlock(my_circuit, model_lanes, param_lanes, batch; log=true, grover_iterations=0)
+plotmeasure(qml; sort=true, num_entries=8)
+```
+
+![vm2](imgs/visualize_measurements3.svg)
+
+Now, let's visualize the results after training the model:
+
+```julia
+qml = QMLBlock(my_circuit, model_lanes, param_lanes, batch; log=true)
+plotmeasure(qml; sort=true, num_entries=8)
+```
+
+![vm2](imgs/visualize_measurements4.svg)
+
 Keep in mind that the last bit is our model lane, while the first two bits are our parameter lanes.
 
-We provided some optional arguments to make the plot easier to understand. For instance, we can provide an oracle_function to highlight the desired output states. Let's say we want to highlight the first three bars:
+If you want to create more specialized visualizations, we provided some optional arguments to make the plot easier to understand. For instance, we can provide an oracle_function to highlight the desired output states. Let's say we want to highlight the first three bars:
 
 ```julia
 plotmeasure(measurements; oracle_function=i -> i==1||i==5)
@@ -191,6 +255,8 @@ plotmeasure(measurements; oracle_function=i -> i==1||i==5, sort=true, num_entrie
 ![vmopt1](imgs/visualize_measurement_opt3.svg)
 
 ### Model training
+
+[THIS SECTION IS OUTDATED AND WILL BE UPDATED SOON]
 
 Let's create a model and train it on a simple dataset. We define the model as follows:
 
