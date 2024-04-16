@@ -96,17 +96,28 @@ Circuit creation is mainly done using `Yao`. There are legacy functions that can
 
 ### Generating a QML circuit
 
-You can compile a circuit using the function `compile_circuit`.
+You can convert your circuit into a QML circuit using a `QMLBlock`.
 
 ```julia
-my_circuit = compile_circuit(grover_circ)
+# Initialize a circuit with 1 model and 1 parameter lane
+circuit = chain(3, repeat(H, (2, 3)), control(2:3, 1 => X))
+
+model_lanes = 1
+param_lanes = 2:3
+
+# We want to fit the model on those two tuples
+training_tuple_1 = (false, true)
+training_tuple_2 = (true, false)
+
+# The feature size must match the number of model lanes
+feature_1 = [training_tuple_1]
+feature_2 = [training_tuple_2]
+batch = [feature_1, feature_2]
+
+grover = QMLBlock(circuit, model_lanes, param_lanes, batch)
 ```
 
-This will compile the circuit and return a `Yao` circuit. You can also compile the inverse circuit using the flag `inv`.
 
-```julia
-my_circuit = compile_circuit(grover_circ, inv = true)
-```
 
 ### Visualizing a circuit
 

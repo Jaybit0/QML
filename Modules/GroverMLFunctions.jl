@@ -54,6 +54,11 @@ end
 
 function computeOptimalGroverN(cumProb::Number, thresh::Number = .9)::Integer
     angle = computeAngle(cumProb)
+
+    if angle < 1e-20
+        throw(DomainError(cumProb, "Cannot find optimum for cumProb < 1e-20"))
+    end
+
     optimum = 1/2 * (pi/(2 * angle) - 1)
     optimalN = trunc(Int, round(optimum))
     

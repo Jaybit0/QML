@@ -187,7 +187,7 @@ function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; 
     if new_mapping_system && length(target_bits) > 1
         circuit = compile_batch_training_circuit(circuit, target_bits)
         target_lanes = circuit.model_lanes
-        target_bits = _flatten_output_bits(target_bits)
+        target_bits = _flatten_nested_list(target_bits)
     end
 
     oracle_lane = 1
@@ -197,11 +197,11 @@ function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; 
     if _use_grover_lane(target_lanes) || length(target_bits) > 1
         circuit = create_checkpoint(circuit)
         # Push the oracle block to the circuit
-        oracle_lane = prepare(circuit, target_lanes, target_bits; new_mapping_system = false)
+        oracle_lane = prepare(circuit, target_lanes, target_bits)
 
         target_lanes = _map_lanes(circuit, circuit.current_checkpoint-1, target_lanes)
     else
-        oracle_lane = prepare(circuit, target_lanes, target_bits; new_mapping_system = false)
+        oracle_lane = prepare(circuit, target_lanes, target_bits)
     end
 
     circ_size = circuit_size(circuit)
@@ -1137,6 +1137,10 @@ function _try_map_output(output_bit)::Tuple{Bool, Union{Bool, Nothing}}
     end
 
     throw(DomainError(output_bit, "The given output bit is not allowed!"))
+end
+
+function _flatten_nested_list(nested_list::Vector{Vector{T}})::Vector{T} where T
+    return reduce(vcat, nested_list)
 end
 
 function _flatten_output_bits(output_bits::Vector{Vector{Tuple{Bool, Union{Bool, Nothing}}}})::Vector{Union{Bool, Nothing}}
