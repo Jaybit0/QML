@@ -8,7 +8,7 @@ using YaoPlots
 export plotmeasure
 export configureYaoPlots
 
-function plotmeasure(grover_block::GroverMLBlock; sort=false, num_entries=nothing)
+function plotmeasure(grover_block::QMLBlock; sort=false, num_entries=nothing)
 	register = zero_state(Yao.nqubits(grover_block))
 	measured = register |> grover_block |> r->measure(r; nshots=100000)
 	plotmeasure(measured; oracle_function=grover_block.compiled_circuit.oracle_function, sort=sort, num_entries=num_entries)

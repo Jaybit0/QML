@@ -1,9 +1,9 @@
 # ======== IMPORTS ========
 # =========================
 
-if !isdefined(Main, :GroverML)
-    include("../Modules/GroverML.jl")
-    using .GroverML
+if !isdefined(Main, :QML)
+    include("../Modules/QML.jl")
+    using .QML
 end
 
 using Yao
@@ -19,11 +19,11 @@ model_lanes = 1
 param_lanes = 2
 
 @info "===== GROVER 1 ====="
-grover = GroverMLBlock(mcirc, model_lanes, param_lanes, true; log=true)
+grover = QMLBlock(mcirc, model_lanes, param_lanes, true; log=true)
 
 @info "===== GROVER 2 ====="
 mcirc2 = chain(3, put(2:3 => grover), control(3, 1 => Ry(π/2)))
-grover2 = GroverMLBlock(mcirc2, 1, 2:3, [[true], [false]]; log=true)
+grover2 = QMLBlock(mcirc2, 1, 2:3, [[true], [false]]; log=true)
 
 # Vizualize the main circuit
 vizcircuit(grover2.compiled_circuit.main_circuit)

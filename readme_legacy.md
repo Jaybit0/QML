@@ -40,9 +40,9 @@ To be able to use static imports with this module, you need to add the following
 Then, you can include the following header:
 
 ```julia
-if !isdefined(Main, :QML)
-    include("../Modules/QML.jl")
-    using .QML
+if !isdefined(Main, :GroverML)
+    include("../Modules/GroverML.jl")
+    using .GroverML
 end
 
 using Yao
@@ -54,18 +54,20 @@ using Yao.EasyBuild, YaoPlots
 Include this code at the beginning of your script. This will automatically import all necessary modules. Note that these are relative paths and might need to be changed according to your file structure.
 
 ```julia
-if !isdefined(Main, :QML)
-    include("../Modules/SetupTool.jl")
+include("../Modules/SetupTool.jl")
 
-    using .SetupTool
-    if setupPackages(false, update_registry = false)
-        include("../Modules/QML.jl")
-        using .QML
-    end
+using .SetupTool
+if setupPackages(false, update_registry = false)
+    include("../Modules/GroverML.jl")
+    include("../Modules/GroverCircuitBuilder.jl")
+    include("../Modules/GroverPlotting.jl")
 end
 
 using Yao
 using Yao.EasyBuild, YaoPlots
+using .GroverML
+using .GroverCircuitBuilder
+using .GroverPlotting
 ```
 
 If you experience any issues with the way modules are imported, you could use the code below as a workaround. However, then you will not be able to see module documentation.
@@ -76,8 +78,13 @@ using .SetupTool
 setupPackages(false, update_registry = false)
 using Revise
 
-Revise.includet("../Modules/QML.jl")
-using .QML
+Revise.includet("../Modules/GroverML.jl")
+using .GroverML
+Revise.includet("../Modules/GroverCircuitBuilder.jl")
+using .GroverCircuitBuilder
+Revise.includet("../Modules/GroverPlotting.jl")
+using .GroverPlotting
+configureYaoPlots()
 using Yao
 using Yao.EasyBuild, YaoPlots
 ```
@@ -92,9 +99,128 @@ Keep in mind that the division into `model` and `parameter` lanes is helpful, bu
 
 ### Creating a circuit
 
-Circuit creation is mainly done using `Yao`. There are legacy functions that can be used to create circuits, but we recommend using the `Yao` functions directly. For more information on how to use our legacy functions, please refer to the [legacy documentation](readme_legacy.md). Note that this documentation is no longer maintained.
+You can create a new circuit by:
 
-### Generating a QML circuit
+```julia
+# Initialize an empty circuit with 2 model lanes and 4 parameter lanes
+grover_circ = empty_circuit(2, 4)
+```
+
+where the first argument is the total number of `model lanes` and the second argument is the total number of `parameter lanes`.
+
+### Building a circuit
+
+You can build circuits using the modules integrated functions. A circuit is built sequentially, meaning that new gates are added to the end of the circuit. For all examples, we assume to have `2` `model lanes` and `4` `parameter lanes` as in the [previous example](#creating-a-circuit).
+
+When referencing circuits, we recommend avoiding absolute indices. Instead, you can access all `model lane`- and `parameter lane` indices using the functions
+
+```julia
+model_lanes(grover_circ)
+```
+
+and 
+
+```julia
+param_lanes(grover_circ)
+```
+
+This will ensure that the correct lanes are accessed, even if you change the order of the lanes.
+
+#### Hadamard gates
+
+You can apply Hadamard gates using the function `hadamard`.
+
+```julia
+hadamard(grover_circ, model_lanes(grover_circ)[3])
+```
+
+Assuming we have an empty circuit, this will add a Hadamard gate to the `3`-rd `model lane`.
+
+![h1](imgs/hadamard1.svg)
+
+We can also apply Hadamard gates to multiple `lanes` at once, using either
+
+```julia
+hadamard(grover_circ, model_lanes(grover_circ)[1:3])
+```
+
+or
+
+```julia
+hadamard(grover_circ, [model_lanes(grover_circ)[1], model_lanes(grover_circ)[2], model_lanes(grover_circ)[3]])
+```
+
+This will add a Hadamard gate to the `1`-st, `2`-nd and `3`-rd `model lane`.
+
+![h2](imgs/hadamard2.svg)
+
+You can also add controlled Hadamard gates by specifing the `control lanes`
+
+```julia
+hadamard(grover_circ, model_lanes(grover_circ)[1], control_lanes = param_lanes(grover_circ)[1])
+```
+
+![h3](imgs/hadamard3.svg)
+
+Each hadamard gate can be controlled by multiple `control lanes` (usually `parameter lanes`)
+
+```julia
+hadamard(grover_circ, model_lanes(grover_circ)[1], control_lanes = param_lanes(grover_circ)[2:3])
+```
+
+![h4](imgs/hadamard4.svg)
+
+You can also specify multiple controlled Hadamard gates at once
+
+```julia
+hadamard(grover_circ, model_lanes(grover_circ)[1:2], control_lanes = [param_lanes(grover_circ)[1], param_lanes(grover_circ)[2:4]])
+```
+
+![h5](imgs/hadamard5.svg)
+
+#### Not gates
+
+You can apply Not gates using the function `not`.
+
+```julia
+not(grover_circ, model_lanes(grover_circ)[3])
+```
+
+![n1](imgs/not1.svg)
+
+You can also apply multiple Not gates, as well as controlled Not gates, in the same way as for [Hadamard gates](#hadamard-gates).
+
+```julia
+not(grover_circ, model_lanes(grover_circ)[1:2], control_lanes = [param_lanes(grover_circ)[1], param_lanes(grover_circ)[2:4]])
+```
+
+![n2](imgs/not2.svg)
+
+#### Learned rotation gates
+
+Learned rotations are granular rotations that can be learned by a classical optimizer. The granularity of such a `learned rotation` is dependent on the number of control lanes. In general, we can learn $2^n$ individual rotations where $n$ is the number of control lanes. This function is implemented as `learned_rotation`.
+
+```julia
+learned_rotation(grover_circ, model_lanes(grover_circ)[1], param_lanes(grover_circ)[3:6])
+```
+
+![lr1](imgs/learned_rotation1.svg)
+
+### Custom yao gates
+
+You can also add custom yao gates using the function `yao_block`.
+Keep in mind that the sequence order is reversed for the inverse gate.
+
+```julia
+custom_block = chain(2, put(1 => Rz(pi)), put(2 => Rz(pi)))
+yao_block(grover_circ, [1:2, 1:2], custom_block; control_lanes=[3:4, 5:6])
+```
+
+![](imgs/yao_block1.svg)
+
+The lane behavior is analogous to all other gates.
+
+### Compiling a circuit
 
 You can compile a circuit using the function `compile_circuit`.
 

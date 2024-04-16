@@ -1,4 +1,4 @@
-module GroverML
+module QML
 
 include("SetupTool.jl")
 #include("GroverMLFunctions.jl")
