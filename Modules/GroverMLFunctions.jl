@@ -21,7 +21,7 @@ function createGroverCircuit(j::Integer, num_grover_iterations::Integer, groverI
     totalCircuit = chain(j)
 
     for _ in 1:num_grover_iterations
-        totalCircuit = chain(j, put(1:j => totalCircuit), put(1:j => groverIteration))
+        append!(Yao.subblocks(totalCircuit), groverIteration)
     end
 
     return totalCircuit
