@@ -91,13 +91,16 @@ end
 Creates an empty circuit with the specified number of `model` and `param`-lanes.
 """
 function empty_circuit(model_lanes::Union{AbstractRange, Vector, Int}, param_lanes::Union{AbstractRange, Vector, Int})::GroverCircuit
-    if isa(model_lanes, Int) && isa(param_lanes, Int)
-        param_lanes = collect(model_lanes+1:model_lanes+param_lanes)
-        model_lanes = collect(1:model_lanes)
-    else
-        model_lanes = _resolve_lanes(model_lanes)
-        param_lanes = _resolve_lanes(param_lanes)
+    if isa(model_lanes, Int)
+        model_lanes = [model_lanes]
     end
+
+    if isa(param_lanes, Int)
+        param_lanes = [param_lanes]
+    end
+    
+    model_lanes = _resolve_lanes(model_lanes)
+    param_lanes = _resolve_lanes(param_lanes)
 
     for lane in model_lanes
         if lane in param_lanes
@@ -167,7 +170,7 @@ A tuple containing the following elements:
 - `oracle_function::Function`: The function that returns `true` if and only if the corresponding state index is a target state
 - `num_grover_iterations::Int`: The actual number of grover iterations that were applied
 """
-function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; forced_grover_iterations::Union{Int, Nothing} = nothing, ignore_errors::Bool = true, evaluate::Bool = true, log::Bool = true, new_mapping_system = false, evaluate_optimal_grover_n = false, start_register::Union{Yao.ArrayReg, Nothing} = nothing)::Tuple{Union{Yao.ArrayReg, Nothing}, Yao.YaoAPI.AbstractBlock, Yao.YaoAPI.AbstractBlock, Function, Int}
+function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; forced_grover_iterations::Union{Int, Nothing} = nothing, ignore_errors::Bool = true, evaluate::Bool = true, log::Bool = true, new_mapping_system = true, evaluate_optimal_grover_n = false, start_register::Union{Yao.ArrayReg, Nothing} = nothing)::Tuple{Union{Yao.ArrayReg, Nothing}, Yao.YaoAPI.AbstractBlock, Yao.YaoAPI.AbstractBlock, Function, Int}
     log && @info "Simulating grover circuit..."
 
     # Map the corresponding types to Vector{Int}
@@ -1072,8 +1075,6 @@ function _resolve_stacked_control_lanes(data::Union{Vector{Vector{Int}}, Vector{
 
     throw(DomainError(data, "Given data type is not allowed!"))
 end
-
-using Yao
 
 function _create_array_register_from_integer(value::Integer, num_qubits::Int)
     # Ensure the value fits within the specified number of qubits
