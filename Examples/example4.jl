@@ -30,7 +30,9 @@ grover2 = QMLBlock(mcirc2, 1, 2:3, [[true], [false]]; log=true, start_register=r
 total_circ = chain(5, put(4:5 => grover), put(1:5 => grover2))
 
 # Vizualize the main circuit
-vizcircuit(total_circ)
+#vizcircuit(total_circ)
 
 # Uncomment this to vizualize the measured results
-#plotmeasure(grover2; sort=true, num_entries=14)
+register = zero_state(Yao.nqubits(total_circ))
+measured = register |> total_circ |> r->measure(r; nshots=100000)
+plotmeasure(measured; oracle_function=grover2.compiled_circuit.oracle_function, sort=true, num_entries=14)

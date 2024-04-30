@@ -31,6 +31,7 @@ export build_grover_iteration;
 export auto_compute;
 export trace_inversion_problem;
 export ml_block;
+export QMLResult;
 
 abstract type GroverBlock end
 
@@ -46,6 +47,15 @@ end
 
 function BlockMeta(insertion_checkpoint::Int, data::Dict)::BlockMeta
     return BlockMeta(insertion_checkpoint, data, nothing)
+end
+
+struct QMLResult
+    out::Union{Yao.ArrayReg, Nothing}
+    main_circuit::Yao.AbstractBlock
+    grover_circuit::Yao.AbstractBlock
+    oracle_function::Function
+    num_grover_iterations::Int
+    oracle_lane::Int
 end
 
 mutable struct GroverCircuit
@@ -170,7 +180,7 @@ A tuple containing the following elements:
 - `oracle_function::Function`: The function that returns `true` if and only if the corresponding state index is a target state
 - `num_grover_iterations::Int`: The actual number of grover iterations that were applied
 """
-function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; forced_grover_iterations::Union{Int, Nothing} = nothing, ignore_errors::Bool = true, evaluate::Bool = true, log::Bool = true, new_mapping_system = true, evaluate_optimal_grover_n = false, start_register::Union{Yao.ArrayReg, Nothing} = nothing)::Tuple{Union{Yao.ArrayReg, Nothing}, Yao.YaoAPI.AbstractBlock, Yao.YaoAPI.AbstractBlock, Function, Int}
+function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; forced_grover_iterations::Union{Int, Nothing} = nothing, ignore_errors::Bool = true, evaluate::Bool = true, log::Bool = true, new_mapping_system = true, evaluate_optimal_grover_n = false, start_register::Union{Yao.ArrayReg, Nothing} = nothing)::QMLResult#::Tuple{Union{Yao.ArrayReg, Nothing}, Yao.YaoAPI.AbstractBlock, Yao.YaoAPI.AbstractBlock, Function, Int}
     log && @info "Simulating grover circuit..."
 
     # Map the corresponding types to Vector{Int}
@@ -243,7 +253,7 @@ function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; 
     if evaluate || evaluate_optimal_grover_n
         cumulative_pre_probability = computeCumProb(out, oracle_function)
     else
-        return nothing, main_circuit, createGroverCircuit(circ_size, isnothing(forced_grover_iterations) ? 1 : forced_grover_iterations, build_grover_iteration(circuit, oracle_lane, _use_grover_lane(target_lanes) ? true : target_bits[1][1][2])), oracle_function, isnothing(forced_grover_iterations) ? 1 : forced_grover_iterations
+        return QMLResult(nothing, main_circuit, createGroverCircuit(circ_size, isnothing(forced_grover_iterations) ? 1 : forced_grover_iterations, build_grover_iteration(circuit, oracle_lane, _use_grover_lane(target_lanes) ? true : target_bits[1][1][2])), oracle_function, isnothing(forced_grover_iterations) ? 1 : forced_grover_iterations, oracle_lane)
     end
 
     log && @info "Cumulative Pre-Probability: $cumulative_pre_probability"
@@ -300,7 +310,7 @@ function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; 
     if evaluate_optimal_grover_n
         pred_cum_prob = computePostGroverLikelihood(computeAngle(cumulative_pre_probability), actual_grover_iterations)
         log &&@info "Predicted likelihood after $(actual_grover_iterations)x Grover: $pred_cum_prob"
-        return out, main_circuit, grover_circuit, oracle_function, actual_grover_iterations
+        return QMLResult(out, main_circuit, grover_circuit, oracle_function, actual_grover_iterations, oracle_lane)
     end
     if log
         @info "Grover circuit compiled"
@@ -334,7 +344,7 @@ function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; 
         trace_inversion_problem(circuit)
     end
 
-    return out, main_circuit, grover_circuit, oracle_function, actual_grover_iterations
+    return QMLResult(out, main_circuit, grover_circuit, oracle_function, actual_grover_iterations, oracle_lane)
 end
 
 """
@@ -412,7 +422,8 @@ function compile_batch_training_circuit(circuit::GroverCircuit, output_bits::Uni
         remap(compiled_circuit, remapping_dictionary)
     end
 
-    new_circuit = empty_circuit(num_batches * lanes_per_batch, length(param_lanes(circuit)))
+    num_model_lanes = num_batches * lanes_per_batch
+    new_circuit = empty_circuit(1:num_model_lanes, (num_model_lanes+1):(num_model_lanes + length(param_lanes(circuit))))
     yao_block(new_circuit, [1:new_circuit_size], compiled_circuit)
 
     return new_circuit
