@@ -15,7 +15,7 @@ struct CompiledGroverCircuit
     grover_circuit::Yao.AbstractBlock
     chained::Yao.AbstractBlock
     oracle_function::Function
-    oracle_lane::Int
+    target_lane::Int
 end
 
 struct QMLBlock{D} <: CompositeBlock{D} 
@@ -46,7 +46,7 @@ function QMLBlock(circuit::AbstractBlock, model_lanes::Union{Vector, AbstractRan
     result = auto_compute(mcircuit, output_bits; forced_grover_iterations=grover_iterations, evaluate=evaluate, log=log, new_mapping_system=true, evaluate_optimal_grover_n=isnothing(grover_iterations), start_register=start_register)
     new_block_size = nqubits(result.main_circuit)
     chained = chain(new_block_size, put(1:new_block_size => result.main_circuit), put(1:new_block_size => result.grover_circuit))
-    compiled_circuit = CompiledGroverCircuit(result.out, result.main_circuit, result.grover_circuit, chained, result.oracle_function, result.oracle_lane)
+    compiled_circuit = CompiledGroverCircuit(result.out, result.main_circuit, result.grover_circuit, chained, result.oracle_function, result.target_lane)
 
     return QMLBlock{2}(mcircuit, output_bits, result.num_grover_iterations, compiled_circuit)
 end

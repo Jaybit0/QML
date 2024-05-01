@@ -55,7 +55,7 @@ struct QMLResult
     grover_circuit::Yao.AbstractBlock
     oracle_function::Function
     num_grover_iterations::Int
-    oracle_lane::Int
+    target_lane::Int
 end
 
 mutable struct GroverCircuit
