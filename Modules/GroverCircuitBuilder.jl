@@ -150,6 +150,11 @@ function param_lanes(circuit::GroverCircuit)::Vector{Int}
     return circuit.param_lanes[:]
 end
 
+@deprecate ml_block(x) "ml_block is deprecated and will be removed in future versions. Use QMLBlock instead."
+"""
+Creates a machine learning block that can be used to train a quantum circuit.
+This function is deprecated and will be removed in future versions. Use QMLBlock instead.
+"""
 function ml_block(circuit::Yao.YaoAPI.AbstractBlock, model_lanes::Int, output_bits::Union{Vector, Bool}, num_grover_iterations::Int)::Yao.YaoAPI.AbstractBlock
     block_size = nqubits(circuit)
     grover_circuit = empty_circuit(model_lanes, block_size - length(model_lanes))
@@ -173,12 +178,13 @@ The function returns a Tuple containing the final simulated register,
 - `evaluate:Bool=true`: Specifies if the grover circuit should actually be simulated. This is necessary to determine the optimal number of grover iterations. However, it is only possible to simulate small circuits. If you only want to build a fixed number of grover iterations, it is not necessary to simulate the state. Thus, for larger circuits it is recommended to not simulate the circuit.
 
 # Returns
-A tuple containing the following elements:
+A QMLResult containing the following elements:
 - `out::Union{Yao.ArrayReg, Nothing}`: The register holding the state after applying the grover circuit if `evaluate == true`, else `nothing`
 - `main_circuit::Yao.YaoAPI.AbstractBlock`: The main circuit that was specified using the grover circuit builder
 - `grover_circuit::Yao.YaoAPI.AbstractBlock`: The generated grover circuit with either the optimal number of iterations, the number of `forced_grover_iterations` if not `nothing`, or a single iteration if `evaluate == false`
 - `oracle_function::Function`: The function that returns `true` if and only if the corresponding state index is a target state
 - `num_grover_iterations::Int`: The actual number of grover iterations that were applied
+- `target_lane::Int`: The lane where the oracle function is applied
 """
 function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; forced_grover_iterations::Union{Int, Nothing} = nothing, ignore_errors::Bool = true, evaluate::Bool = true, log::Bool = true, new_mapping_system = true, evaluate_optimal_grover_n = false, start_register::Union{Yao.ArrayReg, Nothing} = nothing)::QMLResult#::Tuple{Union{Yao.ArrayReg, Nothing}, Yao.YaoAPI.AbstractBlock, Yao.YaoAPI.AbstractBlock, Function, Int}
     log && @info "Simulating grover circuit..."
@@ -347,10 +353,12 @@ function auto_compute(circuit::GroverCircuit, output_bits::Union{Vector, Bool}; 
     return QMLResult(out, main_circuit, grover_circuit, oracle_function, actual_grover_iterations, oracle_lane)
 end
 
+@deprecate trace_inversion_problem(circuit) "trace_inversion_problem is deprecated and will be removed in future versions. nverse blocks should be defined using `block'`."
 """
 This function tries to identify and isolate errors in a grover circuit. It prints out the first GroverBlock where the composition of the block and its inverse is not the identity matrix.
 If a circuit contains errors, the expected likelihood of the target state after a number of grover iterations is usually not equal to the simulated probability.
 Such errors usually appear on custom yao blocks, if the inverse block has not been specified correctly.
+This function is deprecated and will be removed in future versions. Inverse blocks should be defined using `block'`.
 """
 function trace_inversion_problem(circuit::GroverCircuit)
     @info ""
@@ -670,8 +678,6 @@ Creates one or multiple custom Yao-Block.
 custom_block = chain(2, put(1 => Rz(pi)), put(2 => Rz(pi)))
 yao_block(grover_circ, [1:2, 1:2], custom_block; control_lanes=[3:4, 5:6])
 ```
-
-For more information see the [documentation](https://github.com/Jaybit0/QCProjectCode/blob/main/readme.md#custom-yao-gates).
 """
 function yao_block(circuit::GroverCircuit, target_lanes::Union{Vector, AbstractRange, Int}, block::Yao.YaoAPI.AbstractBlock; inv_block::Union{Yao.YaoAPI.AbstractBlock, Nothing} = nothing, control_lanes::Union{Vector, AbstractRange, Int, Nothing} = nothing, push_to_circuit::Bool = true)::Tuple{YaoBlock, BlockMeta}
     target_lanes = _resolve_stacked_control_lanes(target_lanes)
@@ -695,8 +701,6 @@ Creates one or multiple hadamard blocks.
 ```julia
 hadamard(grover_circ, 1:2, control_lanes = [3, 4:6])
 ```
-
-For more information see the [documentation](https://github.com/Jaybit0/QCProjectCode/blob/main/readme.md#hadamard-gates).
 """
 function hadamard(circuit::GroverCircuit, target_lanes::Union{Vector, AbstractRange, Int}; control_lanes::Union{Vector, AbstractRange, Int, Nothing} = nothing, push_to_circuit::Bool = true)::Tuple{HadamardBlock, BlockMeta}
     target_lanes = _resolve_lanes(target_lanes)
@@ -721,8 +725,6 @@ Creates a learned rotation.
 ```julia
 learned_rotation(grover_circ, 1, 3:6)
 ```
-
-For more information see the [documentation](https://github.com/Jaybit0/QCProjectCode/blob/main/readme.md#learned-rotation-gates).
 """
 function learned_rotation(circuit::GroverCircuit, target_lane::Int, control_lanes::Union{Vector, AbstractRange, Int}; max_rotation_rad::Number = 2*pi, push_to_circuit::Bool = true)::Tuple{RotationBlock, BlockMeta}
     control_lanes = _resolve_stacked_control_lanes(control_lanes)
@@ -746,8 +748,9 @@ function learned_rotation(circuit::GroverCircuit, target_lane::Int, control_lane
     return block, meta
 end
 
+@deprecate rotation(circuit, target_lane) "rotation is deprecated and will be removed in future versions. Use QMLBlock and build your own circuit in `Yao.jl`instead."
 """
-A legacy rotation.
+rotation is deprecated and will be removed in future versions. Use QMLBlock and build your own circuit in `Yao.jl`instead.
 """
 function rotation(circuit::GroverCircuit, target_lane::Int; control_lanes::Union{Vector, AbstractRange, Int, Nothing} = nothing, max_rotation_rad::Number = 2*pi, push_to_circuit::Bool = true)::Tuple{RotationBlock, BlockMeta}
     control_lanes = _resolve_stacked_control_lanes(control_lanes)
@@ -793,8 +796,6 @@ Creates one or multiple not-gates.
 ```julia
 not(grover_circ, 1:2, control_lanes = [3, 4:6])
 ```
-
-For more information see the [documentation](https://github.com/Jaybit0/QCProjectCode/blob/main/readme.md#not-gates).
 """
 function not(circuit::GroverCircuit, target_lanes::Union{Vector, AbstractRange, Int}; control_lanes::Union{Int, AbstractRange, Vector, Nothing} = nothing, push_to_circuit::Bool = true)::Tuple{NotBlock, BlockMeta}
     target_lanes = _resolve_lanes(target_lanes)
