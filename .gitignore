@@ -29,3 +29,7 @@ Manifest.toml
 env_prepared.flag
 
 private/
+
+# Environmental variables
+*.toml
+qml/*
