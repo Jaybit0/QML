@@ -7,12 +7,7 @@ export MAX_ROTATION;
 export create_rx_model;
 export create_ry_model;
 export create_OAACircuit;
-
-# mutable struct ModelBlock
-#     compiled_architecture::ChainBlock
-#     RxChain::ChainBlock
-#     RyChain::ChainBlock
-# end
+export run_OAA;
 
 mutable struct RSubchainBlock
     architecture::ChainBlock
@@ -33,7 +28,7 @@ end
 
 const MAX_ROTATION = 2*π
 
-# TODO: create run function for OAA algorithm 
+# DONE: create run function for OAA algorithm 
 # TODO: implement checks to make sure number qubits state and model lanes match
 function run_OAA(model::OAABlock, state::ArrayReg{2, ComplexF64, Matrix{ComplexF64}})
     R0lstar = chain(
@@ -42,7 +37,6 @@ function run_OAA(model::OAABlock, state::ArrayReg{2, ComplexF64, Matrix{ComplexF
         cz(model.num_model_lanes + 1:model.num_model_lanes + rotation_precision - 1, model.num_model_lanes + rotation_precision),
         repeat(X, model.num_model_lanes + 1:model.num_model_lanes + rotation_precision)
     );
-
 
     append_qubits!(state, num_model_lanes * rotation_precision * 2)
 
@@ -61,7 +55,6 @@ function run_OAA(model::OAABlock, state::ArrayReg{2, ComplexF64, Matrix{ComplexF
     focus!(state, model.ry_model.lanes)
 
     state |> model.ry_model.architecture;
-    println(model.ry_model.lanes)
     
     outcome = measure!(state, 1:num_model_lanes * (1 + rotation_precision))
 
@@ -72,49 +65,6 @@ function run_OAA(model::OAABlock, state::ArrayReg{2, ComplexF64, Matrix{ComplexF
     end
     relax!(state, model.ry_model.lanes)
 end
-# function run_OAA(model::OAABlock, state::ArrayReg{2, ComplexF64, Matrix{ComplexF64}})
-    
-#     R0lstar = chain(
-#         model.num_model_lanes + model.rotation_precision,
-#         repeat(X, model.num_model_lanes + 1:model.num_model_lanes + rotation_precision),
-#         cz(model.num_model_lanes + 1:model.num_model_lanes + rotation_precision - 1, model.num_model_lanes + rotation_precision),
-#         repeat(X, model.num_model_lanes + 1:model.num_model_lanes + rotation_precision)
-#     )
-
-#     # get Rx lanes
-#     rx_lanes = collect(1:model.num_model_lanes)
-#     ry_lanes = collect(1:model.num_model_lanes)
-
-#     for i in size(model.subchains)
-#         # x
-#         append!(rx_lanes, 
-#             collect((num_model_lanes + (2 * rotation_precision * (i - 1)) + 1)
-#             :(num_model_lanes + (2 * rotation_precision * (i - 1)) + rotation_precision - 1))
-#         )
-
-#         # y
-#         append!(ry_lanes, 
-#             collect((num_model_lanes + (2 * rotation_precision * (i - 1)) + rotation_precision)
-#             :(num_model_lanes + 1 + 2 * rotation_precision * i - 1))
-#         )
-#     end
-
-#     append_qubits!(state, model.num_model_lanes * model.rotation_precision)
-    
-#     focus!(state, rx_lanes)
-
-#     state |> model.model_architecture.RxChain
-
-#     outcome = measure!(state, rx_lanes)
-#     if (outcome != 0)
-#         state |> Daggered(model.model_architecture.RxChain);
-#         state |> R0lstar;
-#         state |> model.model_architecture.RxChain;
-#     end
-
-#     relax!(state, rx_lanes)
-
-# end
 
 function create_rx_model(num_model_lanes, rotation_precision)
     # create template for model with specified rotation precision
@@ -252,6 +202,50 @@ function create_OAACircuit(num_model_lanes, rotation_precision)
         rotation_precision
     )
 end
+
+# function run_OAA(model::OAABlock, state::ArrayReg{2, ComplexF64, Matrix{ComplexF64}})
+    
+#     R0lstar = chain(
+#         model.num_model_lanes + model.rotation_precision,
+#         repeat(X, model.num_model_lanes + 1:model.num_model_lanes + rotation_precision),
+#         cz(model.num_model_lanes + 1:model.num_model_lanes + rotation_precision - 1, model.num_model_lanes + rotation_precision),
+#         repeat(X, model.num_model_lanes + 1:model.num_model_lanes + rotation_precision)
+#     )
+
+#     # get Rx lanes
+#     rx_lanes = collect(1:model.num_model_lanes)
+#     ry_lanes = collect(1:model.num_model_lanes)
+
+#     for i in size(model.subchains)
+#         # x
+#         append!(rx_lanes, 
+#             collect((num_model_lanes + (2 * rotation_precision * (i - 1)) + 1)
+#             :(num_model_lanes + (2 * rotation_precision * (i - 1)) + rotation_precision - 1))
+#         )
+
+#         # y
+#         append!(ry_lanes, 
+#             collect((num_model_lanes + (2 * rotation_precision * (i - 1)) + rotation_precision)
+#             :(num_model_lanes + 1 + 2 * rotation_precision * i - 1))
+#         )
+#     end
+
+#     append_qubits!(state, model.num_model_lanes * model.rotation_precision)
+    
+#     focus!(state, rx_lanes)
+
+#     state |> model.model_architecture.RxChain
+
+#     outcome = measure!(state, rx_lanes)
+#     if (outcome != 0)
+#         state |> Daggered(model.model_architecture.RxChain);
+#         state |> R0lstar;
+#         state |> model.model_architecture.RxChain;
+#     end
+
+#     relax!(state, rx_lanes)
+
+# end
 
 # # DONE: generalize to general number of model lanes
 # # TODO: convert to vector input
