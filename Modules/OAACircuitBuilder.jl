@@ -35,6 +35,43 @@ const MAX_ROTATION = 2*π
 
 # TODO: create run function for OAA algorithm 
 # TODO: implement checks to make sure number qubits state and model lanes match
+function run_OAA(model::OAABlock, state::ArrayReg{2, ComplexF64, Matrix{ComplexF64}})
+    R0lstar = chain(
+        model.num_model_lanes * (1 + model.rotation_precision),
+        repeat(X, model.num_model_lanes + 1:model.num_model_lanes + rotation_precision),
+        cz(model.num_model_lanes + 1:model.num_model_lanes + rotation_precision - 1, model.num_model_lanes + rotation_precision),
+        repeat(X, model.num_model_lanes + 1:model.num_model_lanes + rotation_precision)
+    );
+
+
+    append_qubits!(state, num_model_lanes * rotation_precision * 2)
+
+    focus!(state, model.rx_model.lanes)
+
+    state |> model.rx_model.architecture;
+
+    outcome = measure!(state, num_model_lanes * (1 + rotation_precision))
+    if (outcome != 0)
+        state |> Daggered(model.rx_model.architecture);
+        state |> R0lstar;
+        state |> model.rx_model.architecture;
+    end
+    relax!(state, model.rx_model.lanes)
+
+    focus!(state, model.ry_model.lanes)
+
+    state |> model.ry_model.architecture;
+    println(model.ry_model.lanes)
+    
+    outcome = measure!(state, 1:num_model_lanes * (1 + rotation_precision))
+
+    if (outcome != 0)
+        state |> Daggered(model.ry_model.architecture);
+        state |> R0lstar;
+        state |> model.ry_model.architecture;
+    end
+    relax!(state, model.ry_model.lanes)
+end
 # function run_OAA(model::OAABlock, state::ArrayReg{2, ComplexF64, Matrix{ComplexF64}})
     
 #     R0lstar = chain(
@@ -161,9 +198,8 @@ function create_ry_model(num_model_lanes, rotation_precision)
         y_lanes,
         collect(num_model_lanes + num_model_lanes * rotation_precision + 1:num_model_lanes + 2 * num_model_lanes * rotation_precision)
     )
-    println("Y lanes")
-    println(y_lanes)
-    shift = num_model_lanes * rotation_precision
+    
+    shift = 0
 
     subchains = RSubchainBlock[]
 
@@ -178,7 +214,7 @@ function create_ry_model(num_model_lanes, rotation_precision)
             lanes = pushfirst!(
                         collect(shift + num_model_lanes + (i - 1) * rotation_precision + 1:shift + num_model_lanes + i * rotation_precision),
                         i
-                    )
+            )
             architecture = RySubchainEND
         end
         push!(subchains, RSubchainBlock(architecture, lanes))
@@ -188,6 +224,7 @@ function create_ry_model(num_model_lanes, rotation_precision)
         num_model_lanes * (1 + rotation_precision),
         subroutine(r.architecture, r.lanes) for r in subchains
     )
+
 
     return RChainBlock(ry_model, y_lanes)
 end
@@ -199,10 +236,6 @@ function create_OAACircuit(num_model_lanes, rotation_precision)
     ry_model = create_ry_model(num_model_lanes, rotation_precision)
     
     total_num_lanes = num_model_lanes * (rotation_precision * 2 + 1)
-
-    println(total_num_lanes)
-    println(rx_model.lanes)
-    println(ry_model.lanes)
 
     architecture = chain(
         total_num_lanes,
