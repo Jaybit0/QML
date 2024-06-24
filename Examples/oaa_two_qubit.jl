@@ -7,7 +7,7 @@ if !isdefined(Main, :QML)
 end
 
 using Yao, YaoPlots
-using Yao.EasyBuild
+# using Yao.EasyBuild
 
 Φ = zero_state(2) |> chain(2, put(1=>Ry(π)))
 
@@ -26,7 +26,7 @@ RxChain = chain(4, repeat(H, 3:4),
     control(4, 2=>Rx(π))
 );
 # for later expansion to RxChain/rotations
-model_architecture = chain(6, subroutine(RxChain, [1:4]),
+model_architecture = chain(6, subroutine(RxChain, 1:4),
                         subroutine(RyChain, [1, 2, 5, 6])
                         )
 
@@ -67,6 +67,8 @@ relax(Φ, [1, 2, 5, 6])
 
 # outcome = measure!(Φ, 1:4)
 # # TODO: visualize circuit
+vizcircuit(Φ)
+
 println(outcome)
 # println(typeof(outcome))
 

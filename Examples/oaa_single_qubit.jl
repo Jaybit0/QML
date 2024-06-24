@@ -13,6 +13,8 @@ using Yao, YaoPlots
 # one qubit circuit
 Φ = zero_state(1) |> Rx(-π/4) |> Ry(-π/4)
 
+print(typeof(Φ))
+
 # Define the parameterized rotations
 # All of those need focus on 1st qb and 3 param qbs
 RxChain = chain(4,repeat(H, 2:4), 

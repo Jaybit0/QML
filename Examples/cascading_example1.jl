@@ -5,10 +5,15 @@ include("../Modules/OAACircuitBuilder.jl")
 using Yao
 using Yao.EasyBuild, YaoPlots
 
+num_model_lanes = 2
+rotation_precision = 1
 
-model_lanes = 1:2
-rotation_precision = 2
+ma = create_OAACircuit(num_model_lanes, rotation_precision)
 
-model_architecture = create_OAACircuit(model_lanes, rotation_precision)
+vizcircuit(ma.architecture)
 
-vizcircuit(model_architecture)
+Φ = zero_state(2) |> chain(2, put(1=>Ry(π)))
+run_OAA(ma, Φ)
+
+
+
