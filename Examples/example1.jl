@@ -22,7 +22,7 @@ grover = QMLBlock(mcirc, model_lane, param_lanes, [[true], [false], [true], [tru
 
 #println(grover.compiled_circuit.main_circuit)
 # Vizualize the main circuit
-#vizcircuit(grover.compiled_circuit.main_circuit)
+vizcircuit(grover.compiled_circuit.main_circuit)
 
 # Uncomment this to vizualize the measured results
 #register = zero_state(Yao.nqubits(grover))

@@ -1,17 +1,14 @@
 # ======== IMPORTS ========
 # =========================
-
-if !isdefined(Main, :QML)
-    include("../Modules/OAACircuitBuilder.jl")
-    using .QML
-end
+include("../Modules/OAACircuitBuilder.jl")
 
 using Yao
 using Yao.EasyBuild, YaoPlots
 
-param_lanes = 1:3
-num_model_lanes = 1
 
-model_architecture = create_OAACircuit(param_lanes, num_model_lanes)
+model_lanes = 1:2
+rotation_precision = 2
+
+model_architecture = create_OAACircuit(model_lanes, rotation_precision)
 
 vizcircuit(model_architecture)

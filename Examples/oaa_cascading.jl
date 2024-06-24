@@ -4,7 +4,6 @@ if !isdefined(Main, :QML)
 end
 
 using Yao, YaoPlots
-using Yao.EasyBuild
 
 
 mutable struct RChainBlock
@@ -12,41 +11,36 @@ mutable struct RChainBlock
     lanes::Vector{Int}
 end
 
-
-function create_RChainBlock(i, param_lanes, num_model_lanes)
+# TODO: insert checks for input
+function create_RChainBlock(i, model_lanes, rotation_precision)
 
     println("Creating RxChain")
-    RxChain = chain(num_model_lanes + 1, repeat(H, 2:num_model_lanes + 1),
+    RxChain = chain(rotation_precision + 1, repeat(H, 2:rotation_precision + 1),
         control(2, 1=>Rx(π))
     );
     println("Creating RyChain")
-    RyChain = chain(num_model_lanes + 1, repeat(H, 2:num_model_lanes + 1),
+    RyChain = chain(rotation_precision + 1, repeat(H, 2:rotation_precision + 1),
         control(2, 1=>Ry(π))
     );
 
-    if i == size(param_lanes)[1]
+    if i == size(model_lanes)[1]
         println("Creating chain without CNOT")
 
 
-        arch_size = 2 * num_model_lanes + 1
-
-        # architecture = chain(arch_size, 
-        #     put(1:(1 + num_model_lanes) => RxChain),
-        #     put(pushfirst!(collect(num_model_lanes + 2:2 * num_model_lanes + 1), 1) => RyChain)
-        # );
+        arch_size = 2 * rotation_precision + 1
 
         architecture = chain(arch_size, 
-            subroutine(RxChain, 1:(1 + num_model_lanes)),
-            subroutine(RyChain, pushfirst!(collect(num_model_lanes + 2:2 * num_model_lanes + 1), 1))
+            subroutine(RxChain, 1:(1 + rotation_precision)),
+            subroutine(RyChain, pushfirst!(collect(rotation_precision + 2:2 * rotation_precision + 1), 1))
         );
 
         x_range = collect(
-            (size(param_lanes)[1] + (2 * num_model_lanes * (i - 1)) + 1)
-            :(size(param_lanes)[1] + (2 * num_model_lanes * (i - 1)) + num_model_lanes - 1)
+            (size(model_lanes)[1] + (2 * rotation_precision * (i - 1)) + 1)
+            :(size(model_lanes)[1] + (2 * rotation_precision * (i - 1)) + rotation_precision - 1)
         )
         y_range = collect(
-            (size(param_lanes)[1] + (2 * num_model_lanes * (i - 1)) + num_model_lanes)
-            :(size(param_lanes)[1] + 1 + 2 * num_model_lanes * i - 1)
+            (size(model_lanes)[1] + (2 * rotation_precision * (i - 1)) + rotation_precision)
+            :(size(model_lanes)[1] + 1 + 2 * rotation_precision * i - 1)
         )
 
         chain_lanes = append!(
@@ -55,26 +49,21 @@ function create_RChainBlock(i, param_lanes, num_model_lanes)
         )
     else    
         println("Creating chain with CNOT")
-        arch_size = 2 * num_model_lanes + 2
-        # architecture = chain(arch_size, 
-        #     put(1:(1 + num_model_lanes) => RxChain),
-        #     put(pushfirst!(collect(num_model_lanes + 2:2 * num_model_lanes + 1), 1) => RyChain),
-        #     cnot(1, 4)
-        # );
+        arch_size = 2 * rotation_precision + 2
 
         architecture = chain(arch_size, 
-            subroutine(RxChain, 1:(1 + num_model_lanes)),
-            subroutine(RyChain, pushfirst!(collect(num_model_lanes + 2:2 * num_model_lanes + 1), 1)),
+            subroutine(RxChain, 1:(1 + rotation_precision)),
+            subroutine(RyChain, pushfirst!(collect(rotation_precision + 2:2 * rotation_precision + 1), 1)),
             cnot(1, 4)
         );
 
         x_range = collect(
-            (size(param_lanes)[1] + (2 * num_model_lanes * (i - 1)) + 1)
-            :(size(param_lanes)[1] + (2 * num_model_lanes * (i - 1)) + num_model_lanes - 1)
+            (size(model_lanes)[1] + (2 * rotation_precision * (i - 1)) + 1)
+            :(size(model_lanes)[1] + (2 * rotation_precision * (i - 1)) + rotation_precision - 1)
         )
         y_range = collect(
-            (size(param_lanes)[1] + (2 * num_model_lanes * (i - 1)) + num_model_lanes)
-            :(size(param_lanes)[1] + 1 + 2 * num_model_lanes * i - 1)
+            (size(model_lanes)[1] + (2 * rotation_precision * (i - 1)) + rotation_precision)
+            :(size(model_lanes)[1] + 1 + 2 * rotation_precision * i - 1)
         )
 
         chain_lanes = push!(
@@ -88,14 +77,16 @@ function create_RChainBlock(i, param_lanes, num_model_lanes)
 
 end
 
-param_lanes = 1:2
+model_lanes = 1:3
 
-num_model_lanes = 1
+# TODO: generalize to general number of model lanes
+# TODO: convert to vector input
+rotation_precision = 1
 
 subchains = RChainBlock[]
 
-for i in 1:size(param_lanes)[1]
-    r = create_RChainBlock(i, param_lanes, num_model_lanes)
+for i in 1:size(model_lanes)[1]
+    r = create_RChainBlock(i, model_lanes, rotation_precision)
     push!(subchains, r)
 end
 
@@ -110,7 +101,7 @@ for r in subchains
     println()
 end
 
-max_num_qubits = size(param_lanes)[1] + num_model_lanes * 2 * size(param_lanes)[1]
+max_num_qubits = size(model_lanes)[1] + rotation_precision * 2 * size(model_lanes)[1]
 
 ma = chain(
     max_num_qubits,
