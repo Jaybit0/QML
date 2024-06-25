@@ -10,10 +10,12 @@ rotation_precision = 1
 
 model = create_OAACircuit(num_model_lanes, rotation_precision)
 
-# vizcircuit(model.architecture)
+vizcircuit(model.architecture)
 
 state = zero_state(2) |> chain(2, put(1=>Ry(π)))
 
 run_OAA(model, state)
+
+plotmeasure(model)
 
     
