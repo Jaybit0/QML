@@ -29,6 +29,7 @@ RxChain = chain(4, repeat(H, 3:4),
 model_architecture = chain(6, subroutine(RxChain, 1:4),
                         subroutine(RyChain, [1, 2, 5, 6])
                         )
+                        
 
 YaoPlots.plot(model_architecture)
 
