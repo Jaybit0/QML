@@ -50,6 +50,7 @@ mutable struct OAABlock
     architecture::CompositeBlock
     models::Vector{ModelBlock}
     rotation_precision::Int
+    total_num_lanes::Int
 end
 
 const MAX_ROTATION = 2*π
@@ -62,15 +63,14 @@ function compile_lane_map(map::LaneMap)
     # rx_param_lanes::Vector{Int}
     # ry_param_lanes::Vector{Int}
     # cnot_param_lane::Int
-    out = vcat(
-        map.rx_model_lanes, # only one model lane
-        [map.target_lane],
-        map.rx_param_lanes,
-        map.ry_param_lanes,
-        [map.cnot_param_lane]
-    )
-    return out
-end
+    return vcat(
+            map.rx_model_lanes, # only one model lane
+            [map.target_lane],
+            map.rx_param_lanes,
+            map.ry_param_lanes,
+            [map.cnot_param_lane]
+        )
+    end
 
 # maps the model index to the set of lanes
 function map_global_lanes(bit::Int, rp::Int, n::Int, b::Int)
@@ -81,7 +81,7 @@ function map_global_lanes(bit::Int, rp::Int, n::Int, b::Int)
     #   rp x-parameter bits n*(b + 1) + 2*rp*(bit - 1) + 1:n*(b + 1) + 2*rp*(bit - 1) + rp
     #   rp y-parameter bits n*(b + 1) + 2*rp*(bit - 1) + rp + 1:n*(b + 1) + 2*rp*(bit - 1) + 2*rp
     #   CNOT control parameter n*(b+1)+2*rp*b + bit
-
+    
     return GlobalLaneMap(
         n*(b+1)+2*rp*b + b, # size,
         1:n*(b+1)+2*rp*b + b, # lanes
@@ -103,6 +103,7 @@ function map_local_lanes(n::Int, rp::Int)
     #   rp x-parameter bits n + 2:n + 1 + rp
     #   rp y-parameter bits n + 2 + rp:n + 1 + 2rp
     #   + 1 CNOT control parameter n + 2 + 2rp
+
     return LocalLaneMap(
         n + 2 + 2*rp, # size
         1:n + 2 + 2*rp, # all lanes
@@ -116,7 +117,7 @@ function map_local_lanes(n::Int, rp::Int)
 end
 
 # builds the model for an individual qubit
-function build_model(bit::Int, rotation_precision, training_data::Vector{Vector{Int}})
+function build_model(bit::Int, rotation_precision::Int, training_data::Vector{Vector{Int}})
     # TODO: implement checks on Vector sizes
     n = length(training_data)
     b = length(training_data[1])
@@ -132,38 +133,38 @@ function build_model(bit::Int, rotation_precision, training_data::Vector{Vector{
     # DONE: controlled ry rotations
     ctrl_roty(ctrl, target, θ) = control(ctrl, target => Ry(θ))
 
-    # TODO: model
+    # DONE: model
     rx_subchain = chain(rotation_precision + 1, ctrl_rotx(j + 1, 1, rotation_increment * j) for j in 1:rotation_precision);
 
     x_temp = chain(
         rotation_precision + n,
         subroutine(rx_subchain, pushfirst!(collect(n + 1:n + rotation_precision), i)) for i in 1:n
-    )
+    );
 
     rx_chain = chain(
         rotation_precision + n,
         repeat(H, n+1:n+rotation_precision),
         subroutine(x_temp, 1:rotation_precision + n)
-    )
+    );
 
     ry_subchain = chain(rotation_precision + 1, ctrl_roty(j + 1, 1, rotation_increment * j) for j in 1:rotation_precision);
 
     y_temp = chain(
         rotation_precision + n,
         subroutine(ry_subchain, pushfirst!(collect(n + 1:n + rotation_precision), i)) for i in 1:n
-    )
+    );
 
     ry_chain = chain(
         rotation_precision + n,
         repeat(H, n+1:n+rotation_precision),
         subroutine(y_temp, 1:rotation_precision + n)
-    )
+    );
 
     model = chain(
         local_lanes.size,
         subroutine(rx_chain, vcat(local_lanes.rx_model_lanes, local_lanes.rx_param_lanes)),
         subroutine(ry_chain, vcat(local_lanes.ry_model_lanes, local_lanes.ry_param_lanes))
-    )
+    );
 
     # DONE: X gates
     zeros = Int[]
@@ -176,20 +177,20 @@ function build_model(bit::Int, rotation_precision, training_data::Vector{Vector{
     x_from_data = chain(
         local_lanes.size,
         put(i => X) for i in zeros
-    )
+    );
 
     model = chain(
         local_lanes.size,
         subroutine(model, local_lanes.lanes),
         subroutine(x_from_data, local_lanes.lanes)
-    )
+    );
 
     cnot_lanes = vcat(1:n, [local_lanes.target_lane])
 
     cnot_subblock = chain(
         n + 1,
         cnot(1:n, n+1)
-    )
+    );
 
     model = chain(
         local_lanes.size,
@@ -199,7 +200,7 @@ function build_model(bit::Int, rotation_precision, training_data::Vector{Vector{
             local_lanes.cnot_param_lane,
             cnot_lanes => cnot_subblock
         )
-    )
+    );
 
     global_lanes = map_global_lanes(bit, rotation_precision, n, b)
 
@@ -215,7 +216,7 @@ end
 
 function create_oaa_circuit(training_data::Vector{Vector{Int}}, rotation_precision::Int)
     if length(training_data) < 1
-        # TODO: throw error
+        # TODO: implement checks
         return nothing
     end
 
@@ -229,14 +230,22 @@ function create_oaa_circuit(training_data::Vector{Vector{Int}}, rotation_precisi
         push!(models, model)
     end
 
+    # TODO: implement OAA here
     architecture = chain(
         models[1].global_lane_map.size,
         subroutine(model.architecture, compile_lane_map(model.global_lane_map)) for model in models
+        # TODO: add CNOT controls
     )
+
+    # architecture::CompositeBlock
+    # models::Vector{ModelBlock}
+    # rotation_precision::Int
+    # total_num_lanes::Int
 
     return OAABlock(
         architecture,
         models,
-        rotation_precision
+        rotation_precision,
+        models[1].global_lane_map.size
     )
 end

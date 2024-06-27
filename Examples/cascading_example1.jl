@@ -8,7 +8,7 @@ using Yao.EasyBuild, YaoPlots
 num_model_lanes = 2
 rotation_precision = 1
 
-model = old_create_OAACircuit(num_model_lanes, rotation_precision)
+model = create_oaa_circuit(num_model_lanes, rotation_precision)
 
 vizcircuit(model.architecture)
 
