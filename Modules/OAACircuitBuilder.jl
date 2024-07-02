@@ -88,7 +88,6 @@ function compile_lane_map(map::GlobalLaneMap)
     end
 
 function compile_lane_map(map::TransitionLaneMap)
-    println(map.lanes)
     return map.lanes
 end
 
@@ -150,11 +149,7 @@ function map_transition_lanes(bit::Int, n::Int, ctrl::Int)
     # bit = bit number
     # n = number elements training data
     # ctrl = control parameter
-    lanes = Vector{Int}()
-
-    for j in 0:(n-1)
-        push!(lanes, bit + j, bit + j + n)
-    end
+    lanes = collect((bit - 1) * n + 1:(bit + 1) * n)
 
     push!(lanes, ctrl)
     
@@ -292,45 +287,36 @@ function create_oaa_circuit(training_data::Vector{Vector{Int}}, rotation_precisi
     n = length(training_data)
 
     models = []
+    transitions = []
     architecture_list = []
 
     for bit in 1:b
         model = build_model(bit, rotation_precision, training_data)
         push!(models, model)
         push!(architecture_list, model)
-        # if bit != b
-        #     transition = build_transition(bit, model.global_lane_map.cnot_param_lane, n)
-        #     push!(architecture_list, transition)
-        #     println(transition.global_lane_map)
-        #     println(transition.architecture)
-        # end
-    end
+        if bit != b
+            transition = build_transition(bit, model.global_lane_map.cnot_param_lane, n)
+            push!(architecture_list, transition)
+            push!(transitions, transition)
+        end
+    end;
 
     # TODO: implement OAA here
-    # architecture = chain(
-    #     models[1].global_lane_map.size + b,
-    #     subroutine(model.architecture, compile_lane_map(model.global_lane_map)) for model in models
-    #     # TODO: add CNOT controls
-    # )
-
-    println("Size")
-    println(models[1].global_lane_map.size + b)
-
-
     architecture = chain(
         models[1].global_lane_map.size,
         subroutine(model.architecture, compile_lane_map(model.global_lane_map)) for model in architecture_list
-    );
+        # TODO: add CNOT controls
+    )
 
-    # architecture::CompositeBlock
-    # models::Vector{ModelBlock}
-    # rotation_precision::Int
-    # total_num_lanes::Int
+    transition_architecture = chain(
+        models[1].global_lane_map.size,
+        subroutine(models[1].global_lane_map.size, transitions[1].architecture, push!(collect(1:6), 14))
+    )
 
     return OAABlock(
         architecture,
         models,
         rotation_precision,
         models[1].global_lane_map.size
-    )
+    );
 end
