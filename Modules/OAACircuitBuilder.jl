@@ -5,13 +5,17 @@ export MAX_ROTATION;
 export LaneMap;
 export GlobalLaneMap;
 export LocalLaneMap;
+export TransitionLaneMap;
+export TransitionBlock;
 export ModelBlock;
 export OAABlock;
 
 export compile_lane_map;
 export map_global_lanes;
 export map_local_lanes;
+export map_transition_lanes;
 export build_model;
+export build_transition;
 export create_oaa_circuit;
 
 abstract type LaneMap end
@@ -38,6 +42,11 @@ mutable struct LocalLaneMap<:LaneMap
     cnot_param_lane::Int
 end
 
+mutable struct TransitionLaneMap<:LaneMap
+    size::Int
+    lanes::Vector{Int}
+end
+
 mutable struct ModelBlock
     architecture::ChainBlock
     bit::Int
@@ -53,9 +62,15 @@ mutable struct OAABlock
     total_num_lanes::Int
 end
 
+mutable struct TransitionBlock
+    architecture::ChainBlock
+    global_lane_map::LaneMap
+    bit::Int
+end
+
 const MAX_ROTATION = 2*π
 
-function compile_lane_map(map::LaneMap)
+function compile_lane_map(map::GlobalLaneMap)
     # lanes::Vector{Int}
     # rx_model_lanes::Vector{Int}
     # ry_model_lanes::Vector{Int}
@@ -72,8 +87,22 @@ function compile_lane_map(map::LaneMap)
         )
     end
 
+function compile_lane_map(map::TransitionLaneMap)
+    println(map.lanes)
+    return map.lanes
+end
+
+    # TODO: put the data point: first, second, third... bit lanes next to each other
 # maps the model index to the set of lanes
 function map_global_lanes(bit::Int, rp::Int, n::Int, b::Int)
+    # global lane locations for bit, b = total bits, n = number elements training data
+    #   rp x-model bits n*(bit - 1) + 1:n*(bit - 1) + n
+    #   rp y-model bits n*(bit - 1) + 1:n*(bit - 1) + n
+    #   1 target bit n*b + bit
+    #   rp x-parameter bits n*(b + 1) + 2*rp*(bit - 1) + 1:n*(b + 1) + 2*rp*(bit - 1) + rp
+    #   rp y-parameter bits n*(b + 1) + 2*rp*(bit - 1) + rp + 1:n*(b + 1) + 2*rp*(bit - 1) + 2*rp
+    #   CNOT control parameter n*(b+1)+2*rp*b + bit
+    
     # global lane locations for bit, b = total bits, n = number elements training data
     #   rp x-model bits n*(bit - 1) + 1:n*(bit - 1) + n
     #   rp y-model bits n*(bit - 1) + 1:n*(bit - 1) + n
@@ -94,6 +123,7 @@ function map_global_lanes(bit::Int, rp::Int, n::Int, b::Int)
     )
 end
 
+
 function map_local_lanes(n::Int, rp::Int)
     # local lane locations:
     # total = 
@@ -113,6 +143,24 @@ function map_local_lanes(n::Int, rp::Int)
         n + 2:n + 1 + rp, # rx param
         n + 2 + rp:n + 1 + 2*rp, # ry param
         n + 2 + 2*rp # CNOT
+    )
+end
+
+function map_transition_lanes(bit::Int, n::Int, ctrl::Int)
+    # bit = bit number
+    # n = number elements training data
+    # ctrl = control parameter
+    lanes = Vector{Int}()
+
+    for j in 0:(n-1)
+        push!(lanes, bit + j, bit + j + n)
+    end
+
+    push!(lanes, ctrl)
+    
+    return TransitionLaneMap(
+        2*n + 1,
+        lanes
     )
 end
 
@@ -195,11 +243,7 @@ function build_model(bit::Int, rotation_precision::Int, training_data::Vector{Ve
     model = chain(
         local_lanes.size,
         put(local_lanes.lanes => model),
-        control(
-            local_lanes.size,
-            local_lanes.cnot_param_lane,
-            cnot_lanes => cnot_subblock
-        )
+        subroutine(cnot_subblock, cnot_lanes)
     );
 
     global_lanes = map_global_lanes(bit, rotation_precision, n, b)
@@ -214,6 +258,30 @@ function build_model(bit::Int, rotation_precision::Int, training_data::Vector{Ve
     )
 end
 
+# TODO: fix reliance on ctrl from other method
+function build_transition(bit::Int, ctrl_index::Int, n::Int)
+
+    lanes = map_transition_lanes(bit, n, ctrl_index)
+
+    # TODO: make nested CNOT
+    cnot_subblock = control(
+        3,
+        3,
+        1:2 => chain(2, cnot(1, 2))
+    );
+
+    model = chain(
+        2 * n + 1,
+        subroutine(cnot_subblock, [i, i + n, 2*n + 1]) for i in 1:n
+    )
+
+    return TransitionBlock(
+        model,
+        lanes,
+        bit
+    )
+end
+
 function create_oaa_circuit(training_data::Vector{Vector{Int}}, rotation_precision::Int)
     if length(training_data) < 1
         # TODO: implement checks
@@ -224,18 +292,35 @@ function create_oaa_circuit(training_data::Vector{Vector{Int}}, rotation_precisi
     n = length(training_data)
 
     models = []
+    architecture_list = []
 
     for bit in 1:b
         model = build_model(bit, rotation_precision, training_data)
         push!(models, model)
+        push!(architecture_list, model)
+        # if bit != b
+        #     transition = build_transition(bit, model.global_lane_map.cnot_param_lane, n)
+        #     push!(architecture_list, transition)
+        #     println(transition.global_lane_map)
+        #     println(transition.architecture)
+        # end
     end
 
     # TODO: implement OAA here
+    # architecture = chain(
+    #     models[1].global_lane_map.size + b,
+    #     subroutine(model.architecture, compile_lane_map(model.global_lane_map)) for model in models
+    #     # TODO: add CNOT controls
+    # )
+
+    println("Size")
+    println(models[1].global_lane_map.size + b)
+
+
     architecture = chain(
         models[1].global_lane_map.size,
-        subroutine(model.architecture, compile_lane_map(model.global_lane_map)) for model in models
-        # TODO: add CNOT controls
-    )
+        subroutine(model.architecture, compile_lane_map(model.global_lane_map)) for model in architecture_list
+    );
 
     # architecture::CompositeBlock
     # models::Vector{ModelBlock}
