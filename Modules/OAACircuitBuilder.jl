@@ -102,14 +102,6 @@ function map_global_lanes(bit::Int, rp::Int, n::Int, b::Int)
     #   rp y-parameter bits n*(b + 1) + 2*rp*(bit - 1) + rp + 1:n*(b + 1) + 2*rp*(bit - 1) + 2*rp
     #   CNOT control parameter n*(b+1)+2*rp*b + bit
     
-    # global lane locations for bit, b = total bits, n = number elements training data
-    #   rp x-model bits n*(bit - 1) + 1:n*(bit - 1) + n
-    #   rp y-model bits n*(bit - 1) + 1:n*(bit - 1) + n
-    #   1 target bit n*b + bit
-    #   rp x-parameter bits n*(b + 1) + 2*rp*(bit - 1) + 1:n*(b + 1) + 2*rp*(bit - 1) + rp
-    #   rp y-parameter bits n*(b + 1) + 2*rp*(bit - 1) + rp + 1:n*(b + 1) + 2*rp*(bit - 1) + 2*rp
-    #   CNOT control parameter n*(b+1)+2*rp*b + bit
-    
     return GlobalLaneMap(
         n*(b+1)+2*rp*b + b, # size,
         1:n*(b+1)+2*rp*b + b, # lanes
@@ -265,9 +257,17 @@ function build_transition(bit::Int, ctrl_index::Int, n::Int)
         1:2 => chain(2, cnot(1, 2))
     );
 
+    # append CNOT transition gates
     model = chain(
         2 * n + 1,
         subroutine(cnot_subblock, [i, i + n, 2*n + 1]) for i in 1:n
+    )
+
+    # append H gates
+    model = chain(
+        2*n + 1,
+        put(2*n+1=> H),
+        subroutine(model, 1:2*n+1)
     )
 
     return TransitionBlock(
