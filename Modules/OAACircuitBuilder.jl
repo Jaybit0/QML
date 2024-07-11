@@ -6,6 +6,8 @@ export LaneMap;
 export GlobalLaneMap;
 export LocalLaneMap;
 export TransitionLaneMap;
+
+export CustomBlock;
 export TransitionBlock;
 export ModelBlock;
 export OAABlock;
@@ -17,8 +19,11 @@ export map_transition_lanes;
 export build_model;
 export build_transition;
 export create_oaa_circuit;
+export run_OAA;
 
 abstract type LaneMap end
+
+abstract type CustomBlock end
 
 mutable struct GlobalLaneMap<:LaneMap
     size::Int
@@ -47,25 +52,29 @@ mutable struct TransitionLaneMap<:LaneMap
     lanes::Vector{Int}
 end
 
-mutable struct ModelBlock
+mutable struct ModelBlock<:CustomBlock
     architecture::ChainBlock
+    rx_compiled_architecture::ChainBlock
+    ry_compiled_architecture::ChainBlock
     bit::Int
     rotation_precision::Int
     local_lane_map::LaneMap
     global_lane_map::LaneMap
 end
 
-mutable struct OAABlock
-    architecture::CompositeBlock
-    models::Vector{ModelBlock}
-    rotation_precision::Int
-    total_num_lanes::Int
-end
-
-mutable struct TransitionBlock
+mutable struct TransitionBlock<:CustomBlock
     architecture::ChainBlock
     global_lane_map::LaneMap
     bit::Int
+end
+
+mutable struct OAABlock<:CustomBlock
+    architecture::CompositeBlock
+    models::Vector{ModelBlock}
+    transition_models::Vector{TransitionBlock}
+    rotation_precision::Int
+    num_bits::Int
+    total_num_lanes::Int
 end
 
 const MAX_ROTATION = 2*π
@@ -151,6 +160,7 @@ function map_transition_lanes(bit::Int, n::Int, ctrl::Int)
     )
 end
 
+# TODO: clean up extra lane at the end
 # builds the model for an individual qubit
 function build_model(bit::Int, rotation_precision::Int, training_data::Vector{Vector{Int}})
     # TODO: implement checks on Vector sizes
@@ -159,8 +169,8 @@ function build_model(bit::Int, rotation_precision::Int, training_data::Vector{Ve
 
     local_lanes = map_local_lanes(n, rotation_precision)
 
-    # DONE: model bits
-    rotation_increment = MAX_ROTATION / (rotation_precision + 1)
+    # # DONE: model bits
+    # rotation_increment = MAX_ROTATION / (rotation_precision + 1)
 
     # DONE: controlled rx rotations
     ctrl_rotx(ctrl, target, θ) = control(ctrl, target => Rx(θ))
@@ -169,7 +179,8 @@ function build_model(bit::Int, rotation_precision::Int, training_data::Vector{Ve
     ctrl_roty(ctrl, target, θ) = control(ctrl, target => Ry(θ))
 
     # DONE: model
-    rx_subchain = chain(rotation_precision + 1, ctrl_rotx(j + 1, 1, rotation_increment * j) for j in 1:rotation_precision);
+    # TODO: fix angle increment
+    rx_subchain = chain(rotation_precision + 1, ctrl_rotx(j + 1, 1, MAX_ROTATION / 2^(j)) for j in 1:rotation_precision);
 
     x_temp = chain(
         rotation_precision + n,
@@ -182,7 +193,8 @@ function build_model(bit::Int, rotation_precision::Int, training_data::Vector{Ve
         subroutine(x_temp, 1:rotation_precision + n)
     );
 
-    ry_subchain = chain(rotation_precision + 1, ctrl_roty(j + 1, 1, rotation_increment * j) for j in 1:rotation_precision);
+    # TODO: fix angle increment
+    ry_subchain = chain(rotation_precision + 1, ctrl_roty(j + 1, 1, MAX_ROTATION / 2^(j)) for j in 1:rotation_precision);
 
     y_temp = chain(
         rotation_precision + n,
@@ -235,9 +247,23 @@ function build_model(bit::Int, rotation_precision::Int, training_data::Vector{Ve
 
     global_lanes = map_global_lanes(bit, rotation_precision, n, b)
 
+    rx_compiled_architecture = chain(
+        1 + n + rotation_precision,
+        subroutine(rx_chain, 2:1 + n + rotation_precision),
+        subroutine(cnot_subblock, push!(collect(2:n+1), 1))
+    )
+
+    ry_compiled_architecture = chain(
+        1 + n + rotation_precision,
+        subroutine(ry_chain, 2:1 + n + rotation_precision),
+        subroutine(cnot_subblock, push!(collect(2:n+1), 1))
+    )
+
     
     return ModelBlock(
         model,
+        rx_compiled_architecture,
+        ry_compiled_architecture,
         bit,
         rotation_precision,
         local_lanes,
@@ -277,14 +303,16 @@ function build_transition(bit::Int, ctrl_index::Int, n::Int)
     )
 end
 
+# generates the underlying cascading circuit for oblivious amplitude amplitification
+# to run OAA on the result, use run_OAA()
 function create_oaa_circuit(training_data::Vector{Vector{Int}}, rotation_precision::Int)
     if length(training_data) < 1
         # TODO: implement checks
         return nothing
     end
 
-    b = length(training_data[1])
-    n = length(training_data)
+    b = length(training_data[1]) # number bits per data point
+    n = length(training_data) # total number of data points
 
     models = []
     transitions = []
@@ -308,15 +336,106 @@ function create_oaa_circuit(training_data::Vector{Vector{Int}}, rotation_precisi
         # TODO: add CNOT controls
     )
 
-    transition_architecture = chain(
-        models[1].global_lane_map.size,
-        subroutine(models[1].global_lane_map.size, transitions[1].architecture, push!(collect(1:6), 14))
-    )
+    # transition_architecture = chain(
+    #     models[1].global_lane_map.size,
+    #     subroutine(models[1].global_lane_map.size, transitions[1].architecture, push!(collect(1:6), 14))
+    # )
 
     return OAABlock(
         architecture,
         models,
+        transitions,
         rotation_precision,
+        b,
         models[1].global_lane_map.size
     );
+end
+
+# compiles and runs the given circuit using OAA
+function run_OAA(skeleton::OAABlock)
+    models = skeleton.models
+    transitions = skeleton.transition_models
+
+    iter = skeleton.num_bits
+
+    # set up initial state
+    state = zero_state(skeleton.total_num_lanes);
+
+    # define R0lstar
+    # R0lstar = chain(skeleton.rotation_precision + 1,
+    #     repeat(X, 2:skeleton.rotation_precision + 1),
+    #     cz(2:skeleton.rotation_precision + 1, ),
+    #     repeat(X, 2:skeleton.rotation_precision + 1)
+    # );
+    R0lstar = chain(
+        skeleton.num_bits + skeleton.rotation_precision + 1,
+        repeat(X, skeleton.num_bits + 2:skeleton.num_bits + skeleton.rotation_precision + 1),
+        cz(skeleton.num_bits + 2:skeleton.num_bits + skeleton.rotation_precision, skeleton.num_bits + skeleton.rotation_precision),
+        repeat(X, skeleton.num_bits + 2:skeleton.num_bits + skeleton.rotation_precision + 1),
+    );
+
+    for i in 1:iter
+        # organize lanes
+        target_lane = models[i].global_lane_map.target_lane;
+
+        ## get RxChain and lanes
+        rx_lanes = vcat(models[i].global_lane_map.rx_model_lanes, models[i].global_lane_map.rx_param_lanes);
+        collected_rx_lanes = pushfirst!(rx_lanes, target_lane);
+
+        ## RyChain and lanes
+        ry_lanes = vcat(models[i].global_lane_map.ry_model_lanes, models[i].global_lane_map.ry_param_lanes);
+        collected_ry_lanes = pushfirst!(ry_lanes, target_lane);
+
+        # run state through first model
+        ## focus Rx lanes
+        focus!(state, collected_rx_lanes);
+
+        ## pipe state into RxChain
+        state |> model[i].rx_compiled_architecture;
+        
+        ## measure outcome
+        outcome = measure!(state, 1)
+
+        ## if outcome != 0, run OAA again
+        if outcome != 0
+            state |> Daggered(model[i].rx_compiled_architecture);
+            state |> R0lstar;
+            state |> model[i].rx_compiled_architecture;
+        end
+
+        ## relax Rx lanes
+        relax!(state, collected_rx_lanes);
+
+        ## focus Ry lanes
+        focus!(state, collected_ry_lanes);
+
+        ## pipe state into RyChain
+        state |> model[i].ry_compiled_architecture;
+
+        ## measure outcome
+        outcome = measure!(state, 1)
+
+        ## if outcome != 0, run OAA again
+        if outcome != 0
+            state |> Daggered(model[i].ry_compiled_architecture);
+            state |> R0lstar;
+            state |> model[i].ry_compiled_architecture;
+        end
+
+        ## relax Ry lanes
+        relax!(state, collected_ry_lanes);
+
+        # if i != iter
+            # append the transition model
+        if i != iter
+            focus!(state, transitions[i].lanes)
+            state |> transitions[i].architecture
+            relax!(state, transitions[i].lanes)
+        end
+    end
+
+    println(state)
+    return state
+
+
 end
