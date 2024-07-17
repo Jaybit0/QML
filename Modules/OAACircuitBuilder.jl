@@ -352,55 +352,60 @@ function create_oaa_circuit(training_data::Vector{Vector{Int}}, rotation_precisi
 end
 
 # compiles and runs the given circuit using OAA
-function run_OAA(skeleton::OAABlock)
+function run_oaa(skeleton::OAABlock)
     models = skeleton.models
     transitions = skeleton.transition_models
 
     iter = skeleton.num_bits
 
     # set up initial state
-    state = zero_state(skeleton.total_num_lanes);
+    n = skeleton.total_num_lanes;
+
+    state = zero_state(n);
 
     # define R0lstar
-    # R0lstar = chain(skeleton.rotation_precision + 1,
-    #     repeat(X, 2:skeleton.rotation_precision + 1),
-    #     cz(2:skeleton.rotation_precision + 1, ),
-    #     repeat(X, 2:skeleton.rotation_precision + 1)
-    # );
     R0lstar = chain(
         skeleton.num_bits + skeleton.rotation_precision + 1,
         repeat(X, skeleton.num_bits + 2:skeleton.num_bits + skeleton.rotation_precision + 1),
-        cz(skeleton.num_bits + 2:skeleton.num_bits + skeleton.rotation_precision, skeleton.num_bits + skeleton.rotation_precision),
+        cz(skeleton.num_bits + 2:skeleton.num_bits + skeleton.rotation_precision, skeleton.num_bits + skeleton.rotation_precision + 1),
         repeat(X, skeleton.num_bits + 2:skeleton.num_bits + skeleton.rotation_precision + 1),
     );
+
+    # R0lstar = chain(
+    #     skeleton.rotation_precision + 1,
+    #     repeat(X, 2:skeleton.rotation_precision + 1),
+    #     cz(2:2:skeleton.rotation_precision, skeleton.rotation_precision + 1),
+    #     repeat(X, 2:skeleton.rotation_precision + 1),
+    # );
+
 
     for i in 1:iter
         # organize lanes
         target_lane = models[i].global_lane_map.target_lane;
 
         ## get RxChain and lanes
-        rx_lanes = vcat(models[i].global_lane_map.rx_model_lanes, models[i].global_lane_map.rx_param_lanes);
-        collected_rx_lanes = pushfirst!(rx_lanes, target_lane);
+        collected_rx_lanes = vcat([target_lane], models[i].global_lane_map.rx_model_lanes, models[i].global_lane_map.rx_param_lanes);
+        # collected_rx_lanes = vcat([target_lane], models[i].global_lane_map.rx_param_lanes);
 
         ## RyChain and lanes
-        ry_lanes = vcat(models[i].global_lane_map.ry_model_lanes, models[i].global_lane_map.ry_param_lanes);
-        collected_ry_lanes = pushfirst!(ry_lanes, target_lane);
+        collected_ry_lanes = vcat([target_lane], models[i].global_lane_map.ry_model_lanes, models[i].global_lane_map.ry_param_lanes);
+        # collected_ry_lanes = vcat([target_lane], models[i].global_lane_map.ry_param_lanes);
 
         # run state through first model
         ## focus Rx lanes
         focus!(state, collected_rx_lanes);
 
         ## pipe state into RxChain
-        state |> model[i].rx_compiled_architecture;
-        
+        state |> models[i].rx_compiled_architecture;
+            
         ## measure outcome
         outcome = measure!(state, 1)
 
         ## if outcome != 0, run OAA again
         if outcome != 0
-            state |> Daggered(model[i].rx_compiled_architecture);
+            state |> Daggered(models[i].rx_compiled_architecture);
             state |> R0lstar;
-            state |> model[i].rx_compiled_architecture;
+            state |> models[i].rx_compiled_architecture;
         end
 
         ## relax Rx lanes
@@ -410,16 +415,16 @@ function run_OAA(skeleton::OAABlock)
         focus!(state, collected_ry_lanes);
 
         ## pipe state into RyChain
-        state |> model[i].ry_compiled_architecture;
+        state |> models[i].ry_compiled_architecture;
 
         ## measure outcome
         outcome = measure!(state, 1)
 
         ## if outcome != 0, run OAA again
         if outcome != 0
-            state |> Daggered(model[i].ry_compiled_architecture);
+            state |> Daggered(models[i].ry_compiled_architecture);
             state |> R0lstar;
-            state |> model[i].ry_compiled_architecture;
+            state |> models[i].ry_compiled_architecture;
         end
 
         ## relax Ry lanes
@@ -428,14 +433,12 @@ function run_OAA(skeleton::OAABlock)
         # if i != iter
             # append the transition model
         if i != iter
-            focus!(state, transitions[i].lanes)
+            transition_lane_map = compile_lane_map(transitions[i].global_lane_map)
+            focus!(state, transition_lane_map)
             state |> transitions[i].architecture
-            relax!(state, transitions[i].lanes)
+            relax!(state, transition_lane_map)
         end
     end
 
-    println(state)
     return state
-
-
 end
