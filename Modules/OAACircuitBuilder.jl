@@ -19,12 +19,12 @@ export map_transition_lanes;
 export build_model;
 export build_transition;
 export create_oaa_circuit;
-export run_OAA;
+export run_oaa;
 
 # stores indices of parameter, model, and target lanes.
 abstract type LaneMap end
 
-
+# TODO: rename to more descriptive data structure 
 abstract type CustomBlock end
 
 # organizes indices of different lanes (param, model, target) 
@@ -79,9 +79,9 @@ end
 
 # the complete, compiled circuit with all bits and transitions
 mutable struct OAABlock<:CustomBlock
-    architecture::CompositeBlock # complete circuit containing all blocks
+    architecture::CompositeBlock # complete circuit containing all blocks, used in visualization
     models::Vector{ModelBlock} # stores models corresponding to each bit, used in training
-    transition_models::Vector{TransitionBlock} # stores models corresponding to each transitino between bits, used in training
+    transition_models::Vector{TransitionBlock} # stores models corresponding to each transition between bits, used in training
     rotation_precision::Int
     num_bits::Int # number of bits in the training data
     total_num_lanes::Int
@@ -378,7 +378,7 @@ function run_oaa(skeleton::OAABlock)
 
     # define R0lstar
     R0lstar = chain(
-        skeleton.num_bits + skeleton.rotation_precision + 1,
+        skeleton.num_bits + 2 * skeleton.rotation_precision + 1,
         repeat(X, skeleton.num_bits + 2:skeleton.num_bits + skeleton.rotation_precision + 1),
         cz(skeleton.num_bits + 2:skeleton.num_bits + skeleton.rotation_precision, skeleton.num_bits + skeleton.rotation_precision + 1),
         repeat(X, skeleton.num_bits + 2:skeleton.num_bits + skeleton.rotation_precision + 1),
