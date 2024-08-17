@@ -133,7 +133,7 @@ function map_global_lanes(bit::Int, rp::Int, n::Int, b::Int)
     # TODO: clean up redundant information?
     if bit == b
         return GlobalLaneMap(
-            (n + 1 + 2*rp)*b + n - 1, # size,
+            (n + 1 + 2*rp)*b + b - 1, # size of entire circuit
             1:n*(b+1)+2*rp*b + b, # lanes
             n*(bit - 1) + 1:n*bit, # rp x-model
             n*(bit - 1) + 1:n*bit, # rp y-model
@@ -144,7 +144,7 @@ function map_global_lanes(bit::Int, rp::Int, n::Int, b::Int)
         )
     else
         return GlobalLaneMap(
-            (n + 1 + 2*rp)*b + n - 1, # size,
+            (n + 1 + 2*rp)*b + b - 1, # size of entire circuit
             1:n*(b+1)+2*rp*b + b, # lanes
             n*(bit - 1) + 1:n*bit, # rp x-model
             n*(bit - 1) + 1:n*bit, # rp y-model
@@ -170,7 +170,7 @@ function map_local_lanes(n::Int, b::Int, rp::Int, bit::Int)
 
     if bit == b
         return LocalLaneMap(
-            n + 1 + 2*rp, # size
+            n + 1 + 2*rp, # size of ONLY lanes applicable to this bit
             1:n + 1 + 2*rp, # all lanes
             1:n, # rx model
             1:n, # ry model
@@ -181,7 +181,7 @@ function map_local_lanes(n::Int, b::Int, rp::Int, bit::Int)
         )
     else
         return LocalLaneMap(
-            n + 2 + 2*rp, # size
+            n + 2 + 2*rp, # size of ONLY lanes applicable to this bit
             1:n + 2 + 2*rp, # all lanes
             1:n, # rx model
             1:n, # ry model
@@ -377,10 +377,8 @@ function create_oaa_circuit(training_data::Vector{Vector{Int}}, rotation_precisi
     end;
 
     # compile final architecture
-    println("SIZE OF GLOBAL LANE MAP")
-    println(models[1].global_lane_map.size)
     architecture = chain(
-        models[1].global_lane_map.size - 1,
+        models[1].global_lane_map.size,
         subroutine(model.architecture, compile_lane_map(model, b)) for model in architecture_list
     )
 
