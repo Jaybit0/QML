@@ -84,30 +84,38 @@ mutable struct OAABlock<:CustomBlock
     transition_models::Vector{TransitionBlock} # stores models corresponding to each transition between bits, used in training
     rotation_precision::Int
     num_bits::Int # number of bits in the training data
+    num_training_data::Int
     total_num_lanes::Int
 end
 
 const MAX_ROTATION = 2*π
 
-function compile_lane_map(map::GlobalLaneMap)
-    # lanes::Vector{Int}
-    # rx_model_lanes::Vector{Int}
-    # ry_model_lanes::Vector{Int}
-    # target_lane::Int
-    # rx_param_lanes::Vector{Int}
-    # ry_param_lanes::Vector{Int}
-    # cnot_param_lane::Int
-    return vcat(
+function compile_lane_map(model::ModelBlock, b::Int)
+    map = model.global_lane_map
+    if model.bit == b
+        return vcat(
+            map.rx_model_lanes, # only one model lane
+            [map.target_lane],
+            map.rx_param_lanes,
+            map.ry_param_lanes
+        )
+    else
+        return vcat(
             map.rx_model_lanes, # only one model lane
             [map.target_lane],
             map.rx_param_lanes,
             map.ry_param_lanes,
             [map.cnot_param_lane]
         )
+    end
 end
 
-function compile_lane_map(map::TransitionLaneMap)
-    return map.lanes
+function compile_lane_map(model::TransitionBlock)
+    return model.global_lane_map.lanes
+end
+
+function compile_lane_map(model::TransitionBlock, b::Int)
+    return compile_lane_map(model)
 end
 
     # TODO: put the data point: first, second, third... bit lanes next to each other
@@ -123,20 +131,34 @@ function map_global_lanes(bit::Int, rp::Int, n::Int, b::Int)
     #   CNOT control parameter n*(b+1)+2*rp*b + bit
     
     # TODO: clean up redundant information?
-    return GlobalLaneMap(
-        n*(b+1)+2*rp*b + b, # size,
-        1:n*(b+1)+2*rp*b + b, # lanes
-        n*(bit - 1) + 1:n*(bit - 1) + n, # rp x-model
-        n*(bit - 1) + 1:n*(bit - 1) + n, # rp y-model
-        n*b + bit, # target bit
-        n*(b + 1) + 2*rp*(bit - 1) + 1:n*(b + 1) + 2*rp*(bit - 1) + rp, # rp x-param
-        n*(b + 1) + 2*rp*(bit - 1) + rp + 1:n*(b + 1) + 2*rp*(bit - 1) + 2*rp, # rp y-param
-        n*(b+1)+2*rp*b + bit # cnot param lane
-    )
+    if bit == b
+        return GlobalLaneMap(
+            (n + 1 + 2*rp)*b + n - 1, # size,
+            1:n*(b+1)+2*rp*b + b, # lanes
+            n*(bit - 1) + 1:n*bit, # rp x-model
+            n*(bit - 1) + 1:n*bit, # rp y-model
+            n*b + bit, # target bit
+            (n + 1)*b + rp*(bit - 1) + 1:(n + 1)*b + rp*(bit), # rp x-param
+            (n + 1 + rp)*b + rp*(bit - 1) + 1:(n + 1 + rp)*b + rp * (bit), # rp y-param
+            -1 # no CNOT
+        )
+    else
+        return GlobalLaneMap(
+            (n + 1 + 2*rp)*b + n - 1, # size,
+            1:n*(b+1)+2*rp*b + b, # lanes
+            n*(bit - 1) + 1:n*bit, # rp x-model
+            n*(bit - 1) + 1:n*bit, # rp y-model
+            n*b + bit, # target bit
+            (n + 1)*b + rp*(bit - 1) + 1:(n + 1)*b + rp*(bit), # rp x-param
+            (n + 1 + rp)*b + rp*(bit - 1) + 1:(n + 1 + rp)*b + rp * (bit), # rp y-param
+            (n + 1 + 2*rp)*b + bit # cnot param lane
+        )
+    end
 end
 
+# TODO: remove local lane map references
 # called in build_model
-function map_local_lanes(n::Int, rp::Int)
+function map_local_lanes(n::Int, b::Int, rp::Int, bit::Int)
     # local lane locations:
     # total = 
     #   rp x-model bits 1:n
@@ -146,16 +168,29 @@ function map_local_lanes(n::Int, rp::Int)
     #   rp y-parameter bits n + 2 + rp:n + 1 + 2rp
     #   + 1 CNOT control parameter n + 2 + 2rp
 
-    return LocalLaneMap(
-        n + 2 + 2*rp, # size
-        1:n + 2 + 2*rp, # all lanes
-        1:n, # rx model
-        1:n, # ry model
-        n + 1, # target
-        n + 2:n + 1 + rp, # rx param
-        n + 2 + rp:n + 1 + 2*rp, # ry param
-        n + 2 + 2*rp # CNOT
-    )
+    if bit == b
+        return LocalLaneMap(
+            n + 1 + 2*rp, # size
+            1:n + 1 + 2*rp, # all lanes
+            1:n, # rx model
+            1:n, # ry model
+            n + 1, # target
+            n + 2:n + 1 + rp, # rx param
+            n + 2 + rp:n + 1 + 2*rp, # ry param
+            -1 # no CNOT
+        )
+    else
+        return LocalLaneMap(
+            n + 2 + 2*rp, # size
+            1:n + 2 + 2*rp, # all lanes
+            1:n, # rx model
+            1:n, # ry model
+            n + 1, # target
+            n + 2:n + 1 + rp, # rx param
+            n + 2 + rp:n + 1 + 2*rp, # ry param
+            n + 2 + 2*rp # CNOT
+        )
+    end
 end
 
 # returns the lanes for the transition circuit corresponding to the given bits
@@ -182,19 +217,15 @@ function build_model(bit::Int, rotation_precision::Int, training_data::Vector{Ve
     n = length(training_data)
     b = length(training_data[1])
 
-    local_lanes = map_local_lanes(n, rotation_precision)
+    local_lanes = map_local_lanes(n, b, rotation_precision, bit)
 
-    # # DONE: model bits
-    # rotation_increment = MAX_ROTATION / (rotation_precision + 1)
-
-    # DONE: controlled rx rotations
+    # controlled rx rotations
     ctrl_rotx(ctrl, target, θ) = control(ctrl, target => Rx(θ))
 
-    # DONE: controlled ry rotations
+    # controlled ry rotations
     ctrl_roty(ctrl, target, θ) = control(ctrl, target => Ry(θ))
 
-    # DONE: model
-    # TODO: fix angle increment
+    # model
     rx_subchain = chain(rotation_precision + 1, ctrl_rotx(j + 1, 1, MAX_ROTATION / 2^(j)) for j in 1:rotation_precision);
 
     x_temp = chain(
@@ -346,10 +377,11 @@ function create_oaa_circuit(training_data::Vector{Vector{Int}}, rotation_precisi
     end;
 
     # compile final architecture
-    # used in visualizations
+    println("SIZE OF GLOBAL LANE MAP")
+    println(models[1].global_lane_map.size)
     architecture = chain(
-        models[1].global_lane_map.size,
-        subroutine(model.architecture, compile_lane_map(model.global_lane_map)) for model in architecture_list
+        models[1].global_lane_map.size - 1,
+        subroutine(model.architecture, compile_lane_map(model, b)) for model in architecture_list
     )
 
     return OAABlock(
@@ -358,6 +390,7 @@ function create_oaa_circuit(training_data::Vector{Vector{Int}}, rotation_precisi
         transitions,
         rotation_precision,
         b,
+        n,
         models[1].global_lane_map.size
     );
 end
@@ -372,13 +405,13 @@ function run_oaa(skeleton::OAABlock)
     iter = skeleton.num_bits
 
     # set up initial state
-    n = skeleton.total_num_lanes;
 
-    state = zero_state(n);
+    state = zero_state(skeleton.total_num_lanes);
 
     # define R0lstar
+    # TODO: fix mismatch of lanes
     R0lstar = chain(
-        skeleton.num_bits + 2 * skeleton.rotation_precision + 1,
+        skeleton.num_training_data + skeleton.rotation_precision + 1,
         repeat(X, skeleton.num_bits + 2:skeleton.num_bits + skeleton.rotation_precision + 1),
         cz(skeleton.num_bits + 2:skeleton.num_bits + skeleton.rotation_precision, skeleton.num_bits + skeleton.rotation_precision + 1),
         repeat(X, skeleton.num_bits + 2:skeleton.num_bits + skeleton.rotation_precision + 1),
@@ -403,9 +436,15 @@ function run_oaa(skeleton::OAABlock)
 
         ## pipe state into RxChain
         state |> models[i].rx_compiled_architecture;
+
+        ## -- TROUBLESHOOTING CODE -- 
+        println(models[i].global_lane_map.rx_param_lanes)
+        println(collected_rx_lanes)
+        println(skeleton.num_training_data + 2 * skeleton.rotation_precision + 1)
+        ## -- TROUBLESHOOTING CODE -- 
             
         ## measure outcome
-        outcome = measure!(state, 1)
+        outcome = measure!(state, 1);
 
         ## if outcome != 0, run OAA again
         if outcome != 0
@@ -439,7 +478,7 @@ function run_oaa(skeleton::OAABlock)
         # if i != iter
             # append the transition model
         if i != iter
-            transition_lane_map = compile_lane_map(transitions[i].global_lane_map)
+            transition_lane_map = compile_lane_map(transitions[i])
             focus!(state, transition_lane_map)
             state |> transitions[i].architecture
             relax!(state, transition_lane_map)
