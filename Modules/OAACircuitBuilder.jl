@@ -410,9 +410,9 @@ function run_oaa(skeleton::OAABlock)
     # TODO: fix mismatch of lanes
     R0lstar = chain(
         skeleton.num_training_data + skeleton.rotation_precision + 1,
-        repeat(X, skeleton.num_bits + 2:skeleton.num_bits + skeleton.rotation_precision + 1),
-        cz(skeleton.num_bits + 2:skeleton.num_bits + skeleton.rotation_precision, skeleton.num_bits + skeleton.rotation_precision + 1),
-        repeat(X, skeleton.num_bits + 2:skeleton.num_bits + skeleton.rotation_precision + 1),
+        repeat(X, skeleton.num_training_data + 2:skeleton.num_training_data + skeleton.rotation_precision + 1),
+        cz(skeleton.num_training_data + 2:skeleton.num_training_data + skeleton.rotation_precision, skeleton.num_training_data + skeleton.rotation_precision + 1),
+        repeat(X, skeleton.num_training_data + 2:skeleton.num_training_data + skeleton.rotation_precision + 1),
     );
 
     # iterate over the subblocks to train bit-by-bit
@@ -434,12 +434,6 @@ function run_oaa(skeleton::OAABlock)
 
         ## pipe state into RxChain
         state |> models[i].rx_compiled_architecture;
-
-        ## -- TROUBLESHOOTING CODE -- 
-        println(models[i].global_lane_map.rx_param_lanes)
-        println(collected_rx_lanes)
-        println(skeleton.num_training_data + 2 * skeleton.rotation_precision + 1)
-        ## -- TROUBLESHOOTING CODE -- 
             
         ## measure outcome
         outcome = measure!(state, 1);
@@ -476,7 +470,7 @@ function run_oaa(skeleton::OAABlock)
         # if i != iter
             # append the transition model
         if i != iter
-            transition_lane_map = compile_lane_map(transitions[i])
+            # transition_lane_map = compile_lane_map(transitions[i])
             focus!(state, transition_lane_map)
             state |> transitions[i].architecture
             relax!(state, transition_lane_map)

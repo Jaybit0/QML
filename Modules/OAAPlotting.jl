@@ -91,8 +91,6 @@ function get_hypothesis(measured_params::Vector{Vector{Int64}}, rotation_precisi
 	return results
 end
 
-
-
 # plots the results of specified array in a histogram
 function plotmeasure(x::Vector{})
 	# TODO: insert checks

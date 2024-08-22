@@ -27,7 +27,7 @@ vizcircuit(model.architecture)
 # TODO: fix register mismatch
 measured_params = learn_distribution(model)
 
-n = 3 # number data points
+n = length(training_data) # number data points
 b = length(training_data[1]) # number bits
 
 hypothesis = get_hypothesis(measured_params, rotation_precision, b)
