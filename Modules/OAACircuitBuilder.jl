@@ -277,7 +277,7 @@ function build_U(bit::Int, rotation_precision::Int, training_data::Vector{Vector
         subroutine(rx_subchain, pushfirst!(collect(n + 1:n + rotation_precision), i)) for i in 1:n
     );
 
-    rx_compiled_architecture = chain(
+    rx_chain = chain(
         rotation_precision + n,
         repeat(H, n+1:n+rotation_precision),
         subroutine(x_temp, 1:rotation_precision + n)
@@ -291,7 +291,7 @@ function build_U(bit::Int, rotation_precision::Int, training_data::Vector{Vector
         subroutine(ry_subchain, pushfirst!(collect(n + 1:n + rotation_precision), i)) for i in 1:n
     );
 
-    ry_compiled_architecture = chain(
+    ry_chain = chain(
         rotation_precision + n,
         repeat(H, n+1:n+rotation_precision),
         subroutine(y_temp, 1:rotation_precision + n)
@@ -299,8 +299,8 @@ function build_U(bit::Int, rotation_precision::Int, training_data::Vector{Vector
 
     model = chain(
         local_lanes.size,
-        subroutine(rx_compiled_architecture, vcat(local_lanes.rx_model_lanes, local_lanes.rx_param_lanes)),
-        subroutine(ry_compiled_architecture, vcat(local_lanes.ry_model_lanes, local_lanes.ry_param_lanes))
+        subroutine(rx_chain, vcat(local_lanes.rx_model_lanes, local_lanes.rx_param_lanes)),
+        subroutine(ry_chain, vcat(local_lanes.ry_model_lanes, local_lanes.ry_param_lanes))
     );
 
     # DONE: X gates
@@ -339,17 +339,15 @@ function build_U(bit::Int, rotation_precision::Int, training_data::Vector{Vector
 
     global_lanes = map_global_lanes(bit, rotation_precision, n, b)
 
-    # rx_compiled_architecture = chain(
-    #     1 + n + rotation_precision,
-    #     subroutine(rx_chain, 2:1 + n + rotation_precision),
-    #     subroutine(cnot_subblock, push!(collect(2:n+1), 1))
-    # )
+    rx_compiled_architecture = chain(
+        1 + n + rotation_precision,
+        subroutine(rx_chain, 2:1 + n + rotation_precision)
+    )
 
-    # ry_compiled_architecture = chain(
-    #     1 + n + rotation_precision,
-    #     subroutine(ry_chain, 2:1 + n + rotation_precision),
-    #     subroutine(cnot_subblock, push!(collect(2:n+1), 1))
-    # )
+    ry_compiled_architecture = chain(
+        1 + n + rotation_precision,
+        subroutine(ry_chain, 2:1 + n + rotation_precision)
+    )
 
     return ModelBlock(
         model,
@@ -444,25 +442,7 @@ function create_oaa_circuit(training_data::Vector{Vector{Int}}, rotation_precisi
         push!(architecture_list, bit_model_dict)
     end
 
-    # for bit in 1:b
-    #     # TODO: make build_model return a list of all relevant models
-    #     model = build_U(bit, rotation_precision, training_data)
-    #     push!(models, model)
-    #     push!(architecture_list, model)
-    #     if bit != b
-    #         transition = build_transition(bit, model.global_lane_map.cnot_param_lane, n)
-    #         push!(architecture_list, transition)
-    #         push!(transitions, transition)
-    #     end
-    # end;
-
-    # compile final architecture
-    keys = ["U", "CNOT", "TRANSITION"]
-    # architecture = chain(
-    #     u_models[1].global_lane_map.size,
-    #     subroutine(model.architecture, compile_lane_map(model, b)) for model in architecture_list
-    # )
-
+    # compile final architecture for visualization
     size = architecture_list[1]["U"].global_lane_map.size
     architecture = chain(size)
 
@@ -511,13 +491,9 @@ end
 # e.g. training based on the given circuit
 # TODO: replace with troubleshooting code!!!
 function run_oaa(skeleton::OAABlock)
-    models = skeleton.models
-    transitions = skeleton.transition_models
-
-    iter = skeleton.num_bits
+    b = skeleton.num_bits # number of bits in initial training data
 
     # set up initial state
-
     state = zero_state(skeleton.total_num_lanes);
 
     # define R0lstar
@@ -530,31 +506,37 @@ function run_oaa(skeleton::OAABlock)
     );
 
     # iterate over the subblocks to train bit-by-bit
-    for i in 1:iter
+    for i in 1:b
+        u_model = skeleton.architecture_list[i]["U"]
+        cnot_model = skeleton.architecture_list[i]["CNOT"]
+        transition_model = skeleton.architecture_list[i]["TRANSITION"]
         # organize lanes
-        target_lane = models[i].global_lane_map.target_lane;
+        target_lane = u_model.global_lane_map.target_lane;
+
+        # target_lane = models[i].global_lane_map.target_lane;
 
         ## get RxChain and lanes
-        collected_rx_lanes = vcat([target_lane], models[i].global_lane_map.rx_model_lanes, models[i].global_lane_map.rx_param_lanes);
+        collected_rx_lanes = vcat(u_model.global_lane_map.rx_model_lanes, u_model.global_lane_map.rx_param_lanes);
         
         ## RyChain and lanes
-        collected_ry_lanes = vcat([target_lane], models[i].global_lane_map.ry_model_lanes, models[i].global_lane_map.ry_param_lanes);
+        collected_ry_lanes = vcat(u_model.global_lane_map.ry_model_lanes, u_model.global_lane_map.ry_param_lanes);
         
         # run state through first model
         ## focus Rx lanes
         focus!(state, collected_rx_lanes);
 
         ## pipe state into RxChain
-        state |> models[i].rx_compiled_architecture;
+        state |> u_model.rx_compiled_architecture;
+        # state |> cnot_model.architecture; # TODO: figure out how to align this, the alignment is off by 1 bit
             
         ## measure outcome
         outcome = measure!(state, 1);
 
         ## if outcome != 0, run OAA again
         if outcome != 0
-            state |> Daggered(models[i].rx_compiled_architecture);
+            state |> Daggered(u_model.rx_compiled_architecture);
             state |> R0lstar;
-            state |> models[i].rx_compiled_architecture;
+            state |> u_model.rx_compiled_architecture;
         end
 
         ## relax Rx lanes
@@ -564,27 +546,29 @@ function run_oaa(skeleton::OAABlock)
         focus!(state, collected_ry_lanes);
 
         ## pipe state into RyChain
-        state |> models[i].ry_compiled_architecture;
+        state |> u_model.ry_compiled_architecture;
+
+        ## TODO: figure out ry cnot gates?
 
         ## measure outcome
         outcome = measure!(state, 1)
 
         ## if outcome != 0, run OAA again
         if outcome != 0
-            state |> Daggered(models[i].ry_compiled_architecture);
+            state |> Daggered(u_model.ry_compiled_architecture);
             state |> R0lstar;
-            state |> models[i].ry_compiled_architecture;
+            state |> u_model.ry_compiled_architecture;
         end
 
         ## relax Ry lanes
         relax!(state, collected_ry_lanes);
 
-        # if i != iter
+        # if i != b
             # append the transition model
-        if i != iter
-            # transition_lane_map = compile_lane_map(transitions[i])
+        if i != b
+            transition_lane_map = compile_lane_map(transition_model)
             focus!(state, transition_lane_map)
-            state |> transitions[i].architecture
+            state |> transition_model.architecture
             relax!(state, transition_lane_map)
         end
     end

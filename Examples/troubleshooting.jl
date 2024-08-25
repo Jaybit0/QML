@@ -31,10 +31,8 @@ rotation_precision = 1
 # CURRENT STATIC 
 ## START -- learn_distribution -- ##
 ## START -- run_oaa troubleshooting -- ##
-models = skeleton.models
-transitions = skeleton.transition_models
 
-iter = skeleton.num_bits
+b = skeleton.num_bits
 
 # set up initial state
 # t = skeleton.total_num_lanes;
@@ -54,40 +52,49 @@ circuit = chain(skeleton.total_num_lanes);
 # vizcircuit(circuit)
 circuit_with_oaa = chain(skeleton.total_num_lanes);
 
-for i in 1:iter
+for i in 1:b
+    u_model = skeleton.architecture_list[i]["U"]
+    cnot_model = skeleton.architecture_list[i]["CNOT"]
+    if i != b
+        transition_model = skeleton.architecture_list[i]["TRANSITION"]
+    end
+
     # organize lanes
-    target_lane = models[i].global_lane_map.target_lane;
+    target_lane = u_model.global_lane_map.target_lane;
+
     # get RxChain and lanes
     # collected_rx_lanes = vcat([target_lane], models[i].global_lane_map.rx_model_lanes, models[i].global_lane_map.rx_param_lanes);
-    collected_rx_lanes = vcat(models[i].global_lane_map.rx_model_lanes, models[i].global_lane_map.rx_param_lanes);
+    collected_rx_lanes = vcat([target_lane], u_model.global_lane_map.rx_model_lanes, u_model.global_lane_map.rx_param_lanes);
     
     # get RyChain and lanes
     # collected_ry_lanes = vcat([target_lane], models[i].global_lane_map.ry_model_lanes, models[i].global_lane_map.ry_param_lanes);
-    collected_ry_lanes = vcat(models[i].global_lane_map.ry_model_lanes, models[i].global_lane_map.ry_param_lanes);
+    collected_ry_lanes = vcat([target_lane], u_model.global_lane_map.ry_model_lanes, u_model.global_lane_map.ry_param_lanes);
 
     # RX Rotations
     circuit_with_oaa = chain(skeleton.total_num_lanes, 
         subroutine(circuit_with_oaa, 1:skeleton.total_num_lanes),
-        subroutine(models[i].rx_compiled_architecture, collected_rx_lanes)
+        subroutine(u_model.rx_compiled_architecture, collected_rx_lanes),
+        subroutine(cnot_model.architecture, compile_lane_map(cnot_model))
     );
+
     # OAA on RX Rotations
     circuit_with_oaa = chain(skeleton.total_num_lanes,
         subroutine(circuit_with_oaa, 1:skeleton.total_num_lanes),
-        Measure(skeleton.total_num_lanes, locs=target_lane), # TODO: fix measurement loc
-        subroutine(models[i].rx_compiled_architecture', collected_rx_lanes),
+        Measure(skeleton.total_num_lanes, locs=target_lane), # DONE: fix measurement loc
+        subroutine(u_model.rx_compiled_architecture', collected_rx_lanes),
         subroutine(R0lstar, collected_rx_lanes),
-        subroutine(models[i].rx_compiled_architecture, collected_rx_lanes)
+        subroutine(u_model.rx_compiled_architecture, collected_rx_lanes)
     );
 
     # OAA on Ry
     # subroutine(models[i].ry_compiled_architecture, collected_ry_lanes)
 
-    if i != iter
-        transition_lane_map = compile_lane_map(transitions[i]);
+    if i != b
+        transition_lane_map = compile_lane_map(transition_model);
 
         circuit_with_oaa = chain(skeleton.total_num_lanes,
             subroutine(circuit_with_oaa, 1:skeleton.total_num_lanes),
-            subroutine(transitions[i].architecture, transition_lane_map)
+            subroutine(transition_model.architecture, transition_lane_map)
         )
     end
 end
