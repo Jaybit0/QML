@@ -1,3 +1,5 @@
+# TODO: fix CNOT inclusion in U (remove from U, U^\dagger)
+
 # ======== IMPORTS ========
 # =========================
 if !isdefined(Main, :QML)
@@ -13,7 +15,9 @@ using Yao.EasyBuild, YaoPlots
 # the following code is used to troubleshoot/visualize the circuits
 
 function build_circuit()
-    training_data = [[1,1]]
+    training_data = [
+        [1,1]
+    ]
     rotation_precision = 1
     model = create_oaa_circuit(training_data, rotation_precision);
 
@@ -21,6 +25,8 @@ function build_circuit()
 end
 
 skeleton = build_circuit();
+b = 2
+rotation_precision = 1
 
 # CURRENT STATIC 
 ## START -- learn_distribution -- ##
@@ -45,15 +51,19 @@ R0lstar = chain(
 );
 
 circuit = chain(skeleton.total_num_lanes);
+# vizcircuit(circuit)
 circuit_with_oaa = chain(skeleton.total_num_lanes);
 
 for i in 1:iter
     # organize lanes
     target_lane = models[i].global_lane_map.target_lane;
     # get RxChain and lanes
-    collected_rx_lanes = vcat([target_lane], models[i].global_lane_map.rx_model_lanes, models[i].global_lane_map.rx_param_lanes);
+    # collected_rx_lanes = vcat([target_lane], models[i].global_lane_map.rx_model_lanes, models[i].global_lane_map.rx_param_lanes);
+    collected_rx_lanes = vcat(models[i].global_lane_map.rx_model_lanes, models[i].global_lane_map.rx_param_lanes);
+    
     # get RyChain and lanes
-    collected_ry_lanes = vcat([target_lane], models[i].global_lane_map.ry_model_lanes, models[i].global_lane_map.ry_param_lanes);
+    # collected_ry_lanes = vcat([target_lane], models[i].global_lane_map.ry_model_lanes, models[i].global_lane_map.ry_param_lanes);
+    collected_ry_lanes = vcat(models[i].global_lane_map.ry_model_lanes, models[i].global_lane_map.ry_param_lanes);
 
     # RX Rotations
     circuit_with_oaa = chain(skeleton.total_num_lanes, 
@@ -63,12 +73,13 @@ for i in 1:iter
     # OAA on RX Rotations
     circuit_with_oaa = chain(skeleton.total_num_lanes,
         subroutine(circuit_with_oaa, 1:skeleton.total_num_lanes),
-        Measure(skeleton.total_num_lanes, locs=1), # TODO: fix measurement loc
+        Measure(skeleton.total_num_lanes, locs=target_lane), # TODO: fix measurement loc
         subroutine(models[i].rx_compiled_architecture', collected_rx_lanes),
         subroutine(R0lstar, collected_rx_lanes),
         subroutine(models[i].rx_compiled_architecture, collected_rx_lanes)
     );
 
+    # OAA on Ry
     # subroutine(models[i].ry_compiled_architecture, collected_ry_lanes)
 
     if i != iter
@@ -92,6 +103,27 @@ state = zero_state(skeleton.total_num_lanes)
 
 state |> circuit_with_oaa
 
-x = measure()
+x = measure(state, nshots=100);
 
+# store the parameter lanes to be accessed
+param_lanes = Vector{Int64}()
+
+for i in 1:length(models)
+    m = models[i]
+    append!(param_lanes, m.global_lane_map.rx_param_lanes)
+    append!(param_lanes, m.global_lane_map.ry_param_lanes)
+end
+
+# create an empty vector to store param results
+measured_params = Vector{Vector{Int64}}()
+
+# iterate through and store parameter results
+for i in 1:length(x)
+    push!(measured_params, x[i][param_lanes])
+end
+
+println(measured_params)
 ## END -- learn_distribution -- ##
+
+hypothesis = get_hypothesis(measured_params, rotation_precision, b)
+

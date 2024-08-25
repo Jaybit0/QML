@@ -1,13 +1,23 @@
+#################
+# Undergoing revisions:
+# rename build_model to build_u_circuit()
+# separate CNOT from build_model into own model
+# maybe generate a build_cnot()?
+#   if so, create CustomBlock 
+#   if so, create compile_lane_map for CustomBlock
+#################
+# TODO: fix the level at which n, b are accessed
+
 using Yao
 
 export MAX_ROTATION;
 
-export LaneMap;
+export AbstractLaneMap;
 export GlobalLaneMap;
 export LocalLaneMap;
 export TransitionLaneMap;
 
-export CustomBlock;
+export AbstractCustomBlock;
 export TransitionBlock;
 export ModelBlock;
 export OAABlock;
@@ -16,20 +26,27 @@ export compile_lane_map;
 export map_global_lanes;
 export map_local_lanes;
 export map_transition_lanes;
-export build_model;
+export build_U;
 export build_transition;
 export create_oaa_circuit;
 export run_oaa;
 
 # stores indices of parameter, model, and target lanes.
-abstract type LaneMap end
+abstract type AbstractLaneMap end
 
 # TODO: rename to more descriptive data structure 
-abstract type CustomBlock end
+abstract type AbstractCustomBlock end
+
+# generic LaneMap
+
+mutable struct LaneMap<:AbstractLaneMap
+    size::Int
+    lanes::Vector{Int}
+end
 
 # organizes indices of different lanes (param, model, target) 
 # relative to the entire circuit
-mutable struct GlobalLaneMap<:LaneMap
+mutable struct GlobalLaneMap<:AbstractLaneMap
     size::Int # total number of lanes in the map
     lanes::Vector{Int} # range of lanes used
     rx_model_lanes::Vector{Int} # lanes used only in the Rx model 
@@ -42,7 +59,7 @@ end
 
 # organizes indices of different lanes (param, model, target) 
 # relative to the subsection of the circuit that corresponds to the bit
-mutable struct LocalLaneMap<:LaneMap
+mutable struct LocalLaneMap<:AbstractLaneMap
     size::Int # total number of lanes in the map
     lanes::Vector{Int} # range of lanes used
     rx_model_lanes::Vector{Int} # lanes used only in the Rx model 
@@ -54,34 +71,39 @@ mutable struct LocalLaneMap<:LaneMap
 end
 
 # lane mapping for transitions between bits
-mutable struct TransitionLaneMap<:LaneMap
+mutable struct TransitionLaneMap<:AbstractLaneMap
     size::Int # number of lanes involved
     lanes::Vector{Int}
 end
 
+# generic custom block
+mutable struct CustomBlock<:AbstractCustomBlock
+    architecture::ChainBlock
+    global_lane_map::AbstractLaneMap
+end
+
 # circuit corresponding to each bit
-mutable struct ModelBlock<:CustomBlock
+mutable struct ModelBlock<:AbstractCustomBlock
     architecture::ChainBlock # circuit corresponding to the specified bit
     rx_compiled_architecture::ChainBlock # circuit corresponding to only the Rx model, used in training
     ry_compiled_architecture::ChainBlock # circuit corresponding to only the Ry model, used in training
     bit::Int # index of the bit
     rotation_precision::Int
-    local_lane_map::LaneMap
-    global_lane_map::LaneMap
+    local_lane_map::AbstractLaneMap
+    global_lane_map::AbstractLaneMap
 end
 
 # circuit corresponding to transitions between bits
-mutable struct TransitionBlock<:CustomBlock
+mutable struct TransitionBlock<:AbstractCustomBlock
     architecture::ChainBlock # circuit corresponding to CCNOT gate used to transition between bits, used in training
-    global_lane_map::LaneMap
+    global_lane_map::AbstractLaneMap
     bit::Int # index of preceding bit
 end
 
 # the complete, compiled circuit with all bits and transitions
-mutable struct OAABlock<:CustomBlock
+mutable struct OAABlock<:AbstractCustomBlock
     architecture::CompositeBlock # complete circuit containing all blocks, used in visualization
-    models::Vector{ModelBlock} # stores models corresponding to each bit, used in training
-    transition_models::Vector{TransitionBlock} # stores models corresponding to each transition between bits, used in training
+    architecture_list::Vector{Dict{String, AbstractCustomBlock}}
     rotation_precision::Int
     num_bits::Int # number of bits in the training data
     num_training_data::Int
@@ -110,11 +132,11 @@ function compile_lane_map(model::ModelBlock, b::Int)
     end
 end
 
-function compile_lane_map(model::TransitionBlock)
+function compile_lane_map(model::AbstractCustomBlock)
     return model.global_lane_map.lanes
 end
 
-function compile_lane_map(model::TransitionBlock, b::Int)
+function compile_lane_map(model::AbstractCustomBlock, b::Int)
     return compile_lane_map(model)
 end
 
@@ -209,10 +231,32 @@ function map_transition_lanes(bit::Int, n::Int, ctrl::Int)
     )
 end
 
-# TODO: clean up extra lane at the end
+# TODO: builds the CNOT model
+function build_CNOT(n::Int, size::Int, target_lane::Int)
+    # target_lane = 0 # TODO: fix lane retrieval
+    # size = 2 # TODO: fix size retrieval
+    cnot_lanes = vcat(1:n, [target_lane])
+    cnot_lane_map = LaneMap(
+        n + 1,
+        cnot_lanes
+    )
+
+    # TODO: make this more succinct
+    cnot_subblock = chain(
+        n + 1,
+        cnot(1:n, n + 1)
+    )
+
+    return CustomBlock(
+        cnot_subblock, # architecture
+        cnot_lane_map
+    )
+end
+
+# DONE: clean up extra lane at the end
 # builds the model for an individual qubit
 # called by create_oaa_circuit
-function build_model(bit::Int, rotation_precision::Int, training_data::Vector{Vector{Int}})
+function build_U(bit::Int, rotation_precision::Int, training_data::Vector{Vector{Int}})
     # TODO: implement checks on Vector sizes
     n = length(training_data)
     b = length(training_data[1])
@@ -233,13 +277,13 @@ function build_model(bit::Int, rotation_precision::Int, training_data::Vector{Ve
         subroutine(rx_subchain, pushfirst!(collect(n + 1:n + rotation_precision), i)) for i in 1:n
     );
 
-    rx_chain = chain(
+    rx_compiled_architecture = chain(
         rotation_precision + n,
         repeat(H, n+1:n+rotation_precision),
         subroutine(x_temp, 1:rotation_precision + n)
     );
 
-    # TODO: fix angle increment
+    # DONE: fix angle increment
     ry_subchain = chain(rotation_precision + 1, ctrl_roty(j + 1, 1, MAX_ROTATION / 2^(j)) for j in 1:rotation_precision);
 
     y_temp = chain(
@@ -247,7 +291,7 @@ function build_model(bit::Int, rotation_precision::Int, training_data::Vector{Ve
         subroutine(ry_subchain, pushfirst!(collect(n + 1:n + rotation_precision), i)) for i in 1:n
     );
 
-    ry_chain = chain(
+    ry_compiled_architecture = chain(
         rotation_precision + n,
         repeat(H, n+1:n+rotation_precision),
         subroutine(y_temp, 1:rotation_precision + n)
@@ -255,8 +299,8 @@ function build_model(bit::Int, rotation_precision::Int, training_data::Vector{Ve
 
     model = chain(
         local_lanes.size,
-        subroutine(rx_chain, vcat(local_lanes.rx_model_lanes, local_lanes.rx_param_lanes)),
-        subroutine(ry_chain, vcat(local_lanes.ry_model_lanes, local_lanes.ry_param_lanes))
+        subroutine(rx_compiled_architecture, vcat(local_lanes.rx_model_lanes, local_lanes.rx_param_lanes)),
+        subroutine(ry_compiled_architecture, vcat(local_lanes.ry_model_lanes, local_lanes.ry_param_lanes))
     );
 
     # DONE: X gates
@@ -278,34 +322,35 @@ function build_model(bit::Int, rotation_precision::Int, training_data::Vector{Ve
         subroutine(x_from_data, local_lanes.lanes)
     );
 
-    cnot_lanes = vcat(1:n, [local_lanes.target_lane])
+    # FLAG
+    # TODO: make this into a generic CustomBlock
+    # cnot_lanes = vcat(1:n, [local_lanes.target_lane])
 
-    cnot_subblock = chain(
-        n + 1,
-        cnot(1:n, n+1)
-    );
+    # cnot_subblock = chain(
+    #     n + 1,
+    #     cnot(1:n, n+1)
+    # );
 
-    model = chain(
-        local_lanes.size,
-        put(local_lanes.lanes => model),
-        subroutine(cnot_subblock, cnot_lanes)
-    );
+    # model = chain(
+    #     local_lanes.size,
+    #     put(local_lanes.lanes => model),
+    #     subroutine(cnot_subblock, cnot_lanes)
+    # );
 
     global_lanes = map_global_lanes(bit, rotation_precision, n, b)
 
-    rx_compiled_architecture = chain(
-        1 + n + rotation_precision,
-        subroutine(rx_chain, 2:1 + n + rotation_precision),
-        subroutine(cnot_subblock, push!(collect(2:n+1), 1))
-    )
+    # rx_compiled_architecture = chain(
+    #     1 + n + rotation_precision,
+    #     subroutine(rx_chain, 2:1 + n + rotation_precision),
+    #     subroutine(cnot_subblock, push!(collect(2:n+1), 1))
+    # )
 
-    ry_compiled_architecture = chain(
-        1 + n + rotation_precision,
-        subroutine(ry_chain, 2:1 + n + rotation_precision),
-        subroutine(cnot_subblock, push!(collect(2:n+1), 1))
-    )
+    # ry_compiled_architecture = chain(
+    #     1 + n + rotation_precision,
+    #     subroutine(ry_chain, 2:1 + n + rotation_precision),
+    #     subroutine(cnot_subblock, push!(collect(2:n+1), 1))
+    # )
 
-    
     return ModelBlock(
         model,
         rx_compiled_architecture,
@@ -323,7 +368,6 @@ function build_transition(bit::Int, ctrl_index::Int, n::Int)
 
     lanes = map_transition_lanes(bit, n, ctrl_index)
 
-    # TODO: make nested CNOT
     cnot_subblock = control(
         3,
         3,
@@ -350,6 +394,36 @@ function build_transition(bit::Int, ctrl_index::Int, n::Int)
     )
 end
 
+# builds models for the specified qubit
+# returns a list of models that are to be added to the final architecture
+function build_model(bit::Int, rotation_precision::Int, training_data::Vector{Vector{Int}})
+    b = length(training_data[1]) # number bits per data point
+    n = length(training_data) # total number of data points
+    
+    # what is returned
+    models_dict = Dict{String, AbstractCustomBlock}()
+
+    # -- BUILD U --
+    U_model = build_U(bit, rotation_precision, training_data)
+    merge!(models_dict, Dict("U"=>U_model))
+
+    # -- BUILD CNOT --
+    # retrieve data from U_model
+    size = U_model.global_lane_map.size;
+    target_lane = U_model.global_lane_map.target_lane;
+    cnot_model = build_CNOT(n, size, target_lane);
+    merge!(models_dict, Dict("CNOT"=>cnot_model))
+
+    # -- BUILD TRANSITION -- 
+    if bit != b
+        ctrl_index = U_model.global_lane_map.cnot_param_lane
+        transition_model = build_transition(bit, ctrl_index, n)
+        merge!(models_dict, Dict("TRANSITION"=>transition_model))
+    end
+
+    return models_dict
+end
+
 # generates the underlying cascading circuit for oblivious amplitude amplitification
 # to run OAA on the result, use run_OAA()
 function create_oaa_circuit(training_data::Vector{Vector{Int}}, rotation_precision::Int)
@@ -361,41 +435,81 @@ function create_oaa_circuit(training_data::Vector{Vector{Int}}, rotation_precisi
     b = length(training_data[1]) # number bits per data point
     n = length(training_data) # total number of data points
 
-    models = []
-    transitions = []
-    architecture_list = []
+    architecture_list = Vector{Dict{String, AbstractCustomBlock}}()
 
     for bit in 1:b
-        model = build_model(bit, rotation_precision, training_data)
-        push!(models, model)
-        push!(architecture_list, model)
-        if bit != b
-            transition = build_transition(bit, model.global_lane_map.cnot_param_lane, n)
-            push!(architecture_list, transition)
-            push!(transitions, transition)
-        end
-    end;
+        # gets dictionary of the models corresponding to the specific bit
+        bit_model_dict = build_model(bit, rotation_precision, training_data)
+
+        push!(architecture_list, bit_model_dict)
+    end
+
+    # for bit in 1:b
+    #     # TODO: make build_model return a list of all relevant models
+    #     model = build_U(bit, rotation_precision, training_data)
+    #     push!(models, model)
+    #     push!(architecture_list, model)
+    #     if bit != b
+    #         transition = build_transition(bit, model.global_lane_map.cnot_param_lane, n)
+    #         push!(architecture_list, transition)
+    #         push!(transitions, transition)
+    #     end
+    # end;
 
     # compile final architecture
-    architecture = chain(
-        models[1].global_lane_map.size,
-        subroutine(model.architecture, compile_lane_map(model, b)) for model in architecture_list
-    )
+    keys = ["U", "CNOT", "TRANSITION"]
+    # architecture = chain(
+    #     u_models[1].global_lane_map.size,
+    #     subroutine(model.architecture, compile_lane_map(model, b)) for model in architecture_list
+    # )
+
+    size = architecture_list[1]["U"].global_lane_map.size
+    architecture = chain(size)
+
+    for bit in 1:b
+        model = architecture_list[bit]
+        subarchitecture = chain(size)
+
+        subarchitecture = chain(
+            size,
+            subroutine(subarchitecture, 1:size),
+            subroutine(model["U"].architecture, compile_lane_map(model["U"], b))
+        )
+        subarchitecture = chain(
+            size,
+            subroutine(subarchitecture, 1:size),
+            subroutine(model["CNOT"].architecture, compile_lane_map(model["CNOT"], b))
+        )
+
+        if bit != b
+            subarchitecture = chain(
+                size,
+                subroutine(subarchitecture, 1:size),
+                subroutine(model["TRANSITION"].architecture, compile_lane_map(model["TRANSITION"], b))
+            )
+        end
+
+        architecture = chain(
+            size,
+            subroutine(architecture, 1:size),
+            subroutine(subarchitecture, 1:size)
+        )
+    end
 
     return OAABlock(
         architecture,
-        models,
-        transitions,
+        architecture_list,
         rotation_precision,
         b,
         n,
-        models[1].global_lane_map.size
+        size
     );
 end
 
 # compiles and runs the given circuit using OAA
 # by iterating over each of the subblocks for bit-by-bit training
 # e.g. training based on the given circuit
+# TODO: replace with troubleshooting code!!!
 function run_oaa(skeleton::OAABlock)
     models = skeleton.models
     transitions = skeleton.transition_models
@@ -407,7 +521,7 @@ function run_oaa(skeleton::OAABlock)
     state = zero_state(skeleton.total_num_lanes);
 
     # define R0lstar
-    # TODO: fix mismatch of lanes
+    # DONE: fix mismatch of lanes
     R0lstar = chain(
         skeleton.num_training_data + skeleton.rotation_precision + 1,
         repeat(X, skeleton.num_training_data + 2:skeleton.num_training_data + skeleton.rotation_precision + 1),
@@ -422,12 +536,10 @@ function run_oaa(skeleton::OAABlock)
 
         ## get RxChain and lanes
         collected_rx_lanes = vcat([target_lane], models[i].global_lane_map.rx_model_lanes, models[i].global_lane_map.rx_param_lanes);
-        # collected_rx_lanes = vcat([target_lane], models[i].global_lane_map.rx_param_lanes);
-
+        
         ## RyChain and lanes
         collected_ry_lanes = vcat([target_lane], models[i].global_lane_map.ry_model_lanes, models[i].global_lane_map.ry_param_lanes);
-        # collected_ry_lanes = vcat([target_lane], models[i].global_lane_map.ry_param_lanes);
-
+        
         # run state through first model
         ## focus Rx lanes
         focus!(state, collected_rx_lanes);
