@@ -1,7 +1,3 @@
-# TODO: Simple example for debugging with only one qubit, one Rx rotation, and then only Ry rotation.
-# TODO: from there, move to the cascading case
-# TODO: check how focus! and relax! affects the results
-
 # ======== IMPORTS ========
 # =========================
 if !isdefined(Main, :QML)
@@ -15,9 +11,9 @@ using Yao
 using Yao.EasyBuild, YaoPlots
 
 # num_model_lanes = 2
-rotation_precision = 2
+rotation_precision = 2;
 
-training_data = [[1,1], [1, 1], [1, 1]]
+training_data = [[1,1], [1, 1], [1, 1]];
 # training_data = [[0,0, 1],[1,0, 0], [1,1, 0]]
 
 model = create_oaa_circuit(training_data, rotation_precision);
@@ -34,30 +30,78 @@ hypothesis = get_hypothesis(measured_params, rotation_precision, b)
 
 plotmeasure(hypothesis)
 
-# -- START: viz oaa circuit --
 
-skeleton = model
+## -- START: plotmeasure troubleshooting -- ##
+x = hypothesis
 
-models = skeleton.models
-transitions = skeleton.transition_models
 
-R0lstar = chain(
-    skeleton.num_bits - 2 + 2 * skeleton.rotation_precision + 1,
-    repeat(X, skeleton.num_bits + 2:skeleton.num_bits + skeleton.rotation_precision + 1),
-    cz(skeleton.num_bits + 2:skeleton.num_bits + skeleton.rotation_precision, skeleton.num_bits + skeleton.rotation_precision + 1),
-    repeat(X, skeleton.num_bits + 2:skeleton.num_bits + skeleton.rotation_precision + 1),
-);
+b = length(x[1])
+xInt = Int.(x)
+st = length(xInt)
 
-lanes = vcat()
 
-n = skeleton.total_num_lanes;
+using Plots
+histogram(xInt)
 
-vizcircuit(R0lstar)
+hist = fit(Histogram, xInt, 0:2^b)
 
-temp = chain(n,
-    subroutine(R0lstar, 1:n),
-    subroutine(Daggered(models[1].rx_compiled_architecture), 1:n),
-    subroutine(R0lstar, 1:n),
-    subroutine(models[1].rx_compiled_architecture, 1:n)
+num_entries = length(hist.weights)
+sorted_indices = 1:length(xInt)
+colors = nothing
+if(n<=3)
+	s=8
+elseif(n>3 && n<=6)
+	s=5
+elseif(n>6 && n<=10)
+	s=3.2
+elseif(n>10 && n<=15)
+	s=2
+elseif(n>15)
+	s=1
+end
+
+bar(
+	hist.edges[1][begin:num_entries],
+	hist.weights[sorted_indices[begin:num_entries]],
+	title = "Histogram", label="Found in "*string(st)*" tries",
+	size=(600*(num_entries)/s,400),
+	ylims=(0, maximum(hist.weights)),
+	xlims=(-0.5, num_entries-0.5),
+	grid=:false, ticks=false,
+	border=:none,
+	color=(isnothing(colors) ? (:lightblue) : colors[begin:num_entries]),
+	lc=:lightblue,
+	foreground_color_legend = nothing,
+	background_color_legend = nothing
 )
-# -- END: viz oaa circuit
+
+## -- END: plotmeasure troubleshooting -- ##
+
+
+# # -- START: viz oaa circuit --
+
+# skeleton = model
+
+# models = skeleton.models
+# transitions = skeleton.transition_models
+
+# R0lstar = chain(
+#     skeleton.num_bits - 2 + 2 * skeleton.rotation_precision + 1,
+#     repeat(X, skeleton.num_bits + 2:skeleton.num_bits + skeleton.rotation_precision + 1),
+#     cz(skeleton.num_bits + 2:skeleton.num_bits + skeleton.rotation_precision, skeleton.num_bits + skeleton.rotation_precision + 1),
+#     repeat(X, skeleton.num_bits + 2:skeleton.num_bits + skeleton.rotation_precision + 1),
+# );
+
+# lanes = vcat()
+
+# n = skeleton.total_num_lanes;
+
+# vizcircuit(R0lstar)
+
+# temp = chain(n,
+#     subroutine(R0lstar, 1:n),
+#     subroutine(Daggered(models[1].rx_compiled_architecture), 1:n),
+#     subroutine(R0lstar, 1:n),
+#     subroutine(models[1].rx_compiled_architecture, 1:n)
+# )
+# # -- END: viz oaa circuit

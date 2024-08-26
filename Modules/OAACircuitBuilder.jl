@@ -1,10 +1,8 @@
 #################
 # Undergoing revisions:
-# rename build_model to build_u_circuit()
-# separate CNOT from build_model into own model
-# maybe generate a build_cnot()?
-#   if so, create CustomBlock 
-#   if so, create compile_lane_map for CustomBlock
+# TODO: correct the cnot_model mapping from local to global
+# TODO: include the CNOT parameter (in transition block) in hypothesis
+#   TODO: applying CNOT if parameter == 1
 #################
 # TODO: fix the level at which n, b are accessed
 
@@ -231,11 +229,11 @@ function map_transition_lanes(bit::Int, n::Int, ctrl::Int)
     )
 end
 
-# TODO: builds the CNOT model
-function build_CNOT(n::Int, size::Int, target_lane::Int)
+# DONE: builds the CNOT model
+function build_CNOT(n::Int, bit::Int, rotation_precision::Int, target_lane::Int)
     # target_lane = 0 # TODO: fix lane retrieval
     # size = 2 # TODO: fix size retrieval
-    cnot_lanes = vcat(1:n, [target_lane])
+    cnot_lanes = vcat(n*(bit - 1) + 1:n*bit, [target_lane]) # TODO: correct mapping to be global lane map
     cnot_lane_map = LaneMap(
         n + 1,
         cnot_lanes
@@ -409,7 +407,7 @@ function build_model(bit::Int, rotation_precision::Int, training_data::Vector{Ve
     # retrieve data from U_model
     size = U_model.global_lane_map.size;
     target_lane = U_model.global_lane_map.target_lane;
-    cnot_model = build_CNOT(n, size, target_lane);
+    cnot_model = build_CNOT(n, bit, rotation_precision, target_lane);
     merge!(models_dict, Dict("CNOT"=>cnot_model))
 
     # -- BUILD TRANSITION -- 
@@ -489,7 +487,7 @@ end
 # compiles and runs the given circuit using OAA
 # by iterating over each of the subblocks for bit-by-bit training
 # e.g. training based on the given circuit
-# TODO: replace with troubleshooting code!!!
+# DONE: replace with troubleshooting code!!!
 function run_oaa(skeleton::OAABlock)
     b = skeleton.num_bits # number of bits in initial training data
 
@@ -509,17 +507,17 @@ function run_oaa(skeleton::OAABlock)
     for i in 1:b
         u_model = skeleton.architecture_list[i]["U"]
         cnot_model = skeleton.architecture_list[i]["CNOT"]
-        transition_model = skeleton.architecture_list[i]["TRANSITION"]
+
         # organize lanes
         target_lane = u_model.global_lane_map.target_lane;
 
         # target_lane = models[i].global_lane_map.target_lane;
 
         ## get RxChain and lanes
-        collected_rx_lanes = vcat(u_model.global_lane_map.rx_model_lanes, u_model.global_lane_map.rx_param_lanes);
+        collected_rx_lanes = vcat([target_lane], u_model.global_lane_map.rx_model_lanes, u_model.global_lane_map.rx_param_lanes);
         
         ## RyChain and lanes
-        collected_ry_lanes = vcat(u_model.global_lane_map.ry_model_lanes, u_model.global_lane_map.ry_param_lanes);
+        collected_ry_lanes = vcat([target_lane], u_model.global_lane_map.ry_model_lanes, u_model.global_lane_map.ry_param_lanes);
         
         # run state through first model
         ## focus Rx lanes
@@ -527,13 +525,18 @@ function run_oaa(skeleton::OAABlock)
 
         ## pipe state into RxChain
         state |> u_model.rx_compiled_architecture;
-        # state |> cnot_model.architecture; # TODO: figure out how to align this, the alignment is off by 1 bit
-            
+        relax!(state, collected_rx_lanes);
+
+        focus!(state, cnot_model.global_lane_map.lanes);
+        state |> cnot_model.architecture; # TODO: figure out how to align this, the alignment is off by 1 bit
+        relax!(state, cnot_model.global_lane_map.lanes);
+
+        focus!(state, collected_rx_lanes);
         ## measure outcome
         outcome = measure!(state, 1);
 
         ## if outcome != 0, run OAA again
-        if outcome != 0
+        if outcome == 0
             state |> Daggered(u_model.rx_compiled_architecture);
             state |> R0lstar;
             state |> u_model.rx_compiled_architecture;
@@ -547,14 +550,19 @@ function run_oaa(skeleton::OAABlock)
 
         ## pipe state into RyChain
         state |> u_model.ry_compiled_architecture;
+        relax!(state, collected_ry_lanes);
 
-        ## TODO: figure out ry cnot gates?
+        focus!(state, cnot_model.global_lane_map.lanes);
+        state |> cnot_model.architecture;
+        relax!(state, cnot_model.global_lane_map.lanes);
+
+        focus!(state, collected_ry_lanes);
 
         ## measure outcome
         outcome = measure!(state, 1)
 
         ## if outcome != 0, run OAA again
-        if outcome != 0
+        if outcome == 0
             state |> Daggered(u_model.ry_compiled_architecture);
             state |> R0lstar;
             state |> u_model.ry_compiled_architecture;
@@ -566,6 +574,7 @@ function run_oaa(skeleton::OAABlock)
         # if i != b
             # append the transition model
         if i != b
+            transition_model = skeleton.architecture_list[i]["TRANSITION"]
             transition_lane_map = compile_lane_map(transition_model)
             focus!(state, transition_lane_map)
             state |> transition_model.architecture
