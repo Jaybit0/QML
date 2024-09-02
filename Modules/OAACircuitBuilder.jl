@@ -1,7 +1,7 @@
 #################
 # Undergoing revisions:
-# TODO: correct the cnot_model mapping from local to global
-# TODO: include the CNOT parameter (in transition block) in hypothesis
+# DONE: correct the cnot_model mapping from local to global
+# DONE: include the CNOT parameter (in transition block) in hypothesis
 #   TODO: applying CNOT if parameter == 1
 #################
 # TODO: fix the level at which n, b are accessed
@@ -229,17 +229,14 @@ function map_transition_lanes(bit::Int, n::Int, ctrl::Int)
     )
 end
 
-# DONE: builds the CNOT model
+# builds the CNOT model
 function build_CNOT(n::Int, bit::Int, rotation_precision::Int, target_lane::Int)
-    # target_lane = 0 # TODO: fix lane retrieval
-    # size = 2 # TODO: fix size retrieval
-    cnot_lanes = vcat(n*(bit - 1) + 1:n*bit, [target_lane]) # TODO: correct mapping to be global lane map
+    cnot_lanes = vcat(n*(bit - 1) + 1:n*bit, [target_lane])
     cnot_lane_map = LaneMap(
         n + 1,
         cnot_lanes
     )
 
-    # TODO: make this more succinct
     cnot_subblock = chain(
         n + 1,
         cnot(1:n, n + 1)
@@ -251,7 +248,6 @@ function build_CNOT(n::Int, bit::Int, rotation_precision::Int, target_lane::Int)
     )
 end
 
-# DONE: clean up extra lane at the end
 # builds the model for an individual qubit
 # called by create_oaa_circuit
 function build_U(bit::Int, rotation_precision::Int, training_data::Vector{Vector{Int}})
@@ -281,7 +277,6 @@ function build_U(bit::Int, rotation_precision::Int, training_data::Vector{Vector
         subroutine(x_temp, 1:rotation_precision + n)
     );
 
-    # DONE: fix angle increment
     ry_subchain = chain(rotation_precision + 1, ctrl_roty(j + 1, 1, MAX_ROTATION / 2^(j)) for j in 1:rotation_precision);
 
     y_temp = chain(
@@ -301,7 +296,6 @@ function build_U(bit::Int, rotation_precision::Int, training_data::Vector{Vector
         subroutine(ry_chain, vcat(local_lanes.ry_model_lanes, local_lanes.ry_param_lanes))
     );
 
-    # DONE: X gates
     zeros = Int[]
     for i in 1:n
         if training_data[i][bit] == 0
@@ -319,21 +313,6 @@ function build_U(bit::Int, rotation_precision::Int, training_data::Vector{Vector
         subroutine(model, local_lanes.lanes),
         subroutine(x_from_data, local_lanes.lanes)
     );
-
-    # FLAG
-    # TODO: make this into a generic CustomBlock
-    # cnot_lanes = vcat(1:n, [local_lanes.target_lane])
-
-    # cnot_subblock = chain(
-    #     n + 1,
-    #     cnot(1:n, n+1)
-    # );
-
-    # model = chain(
-    #     local_lanes.size,
-    #     put(local_lanes.lanes => model),
-    #     subroutine(cnot_subblock, cnot_lanes)
-    # );
 
     global_lanes = map_global_lanes(bit, rotation_precision, n, b)
 
@@ -487,21 +466,23 @@ end
 # compiles and runs the given circuit using OAA
 # by iterating over each of the subblocks for bit-by-bit training
 # e.g. training based on the given circuit
-# DONE: replace with troubleshooting code!!!
 function run_oaa(skeleton::OAABlock)
     b = skeleton.num_bits # number of bits in initial training data
 
     # set up initial state
-    state = zero_state(skeleton.total_num_lanes);
+    state = zero_state(skeleton.total_num_lanes + b);
 
+
+    ## -- START: test all-in-one results
     # define R0lstar
-    # DONE: fix mismatch of lanes
     R0lstar = chain(
         skeleton.num_training_data + skeleton.rotation_precision + 1,
         repeat(X, skeleton.num_training_data + 2:skeleton.num_training_data + skeleton.rotation_precision + 1),
         cz(skeleton.num_training_data + 2:skeleton.num_training_data + skeleton.rotation_precision, skeleton.num_training_data + skeleton.rotation_precision + 1),
         repeat(X, skeleton.num_training_data + 2:skeleton.num_training_data + skeleton.rotation_precision + 1),
     );
+
+    MAX_ITER = 1;
 
     # iterate over the subblocks to train bit-by-bit
     for i in 1:b
@@ -520,54 +501,68 @@ function run_oaa(skeleton::OAABlock)
         collected_ry_lanes = vcat([target_lane], u_model.global_lane_map.ry_model_lanes, u_model.global_lane_map.ry_param_lanes);
         
         # run state through first model
-        ## focus Rx lanes
-        focus!(state, collected_rx_lanes);
+        for j in 1:MAX_ITER
+            ## focus Rx lanes
+            focus!(state, collected_rx_lanes);
 
-        ## pipe state into RxChain
-        state |> u_model.rx_compiled_architecture;
-        relax!(state, collected_rx_lanes);
-
-        focus!(state, cnot_model.global_lane_map.lanes);
-        state |> cnot_model.architecture; # TODO: figure out how to align this, the alignment is off by 1 bit
-        relax!(state, cnot_model.global_lane_map.lanes);
-
-        focus!(state, collected_rx_lanes);
-        ## measure outcome
-        outcome = measure!(state, 1);
-
-        ## if outcome != 0, run OAA again
-        if outcome == 0
-            state |> Daggered(u_model.rx_compiled_architecture);
-            state |> R0lstar;
+            ## pipe state into RxChain
             state |> u_model.rx_compiled_architecture;
+            relax!(state, collected_rx_lanes);
+
+            focus!(state, cnot_model.global_lane_map.lanes);
+            state |> cnot_model.architecture; # TODO: figure out how to align this, the alignment is off by 1 bit
+            relax!(state, cnot_model.global_lane_map.lanes);
+
+            focus!(state, collected_rx_lanes);
+            ## measure outcome
+            outcome = measure!(state, 1);
+
+            ## if outcome != 0, run OAA again
+            if outcome == 0
+                state |> Daggered(u_model.rx_compiled_architecture);
+                state |> R0lstar;
+                state |> u_model.rx_compiled_architecture;
+                ## relax Rx lanes
+                relax!(state, collected_rx_lanes);
+            else
+                ## relax Rx lanes
+                break
+            end
         end
 
-        ## relax Rx lanes
         relax!(state, collected_rx_lanes);
+        
 
         ## focus Ry lanes
-        focus!(state, collected_ry_lanes);
+        for j in 1:MAX_ITER
+            focus!(state, collected_ry_lanes);
 
-        ## pipe state into RyChain
-        state |> u_model.ry_compiled_architecture;
-        relax!(state, collected_ry_lanes);
-
-        focus!(state, cnot_model.global_lane_map.lanes);
-        state |> cnot_model.architecture;
-        relax!(state, cnot_model.global_lane_map.lanes);
-
-        focus!(state, collected_ry_lanes);
-
-        ## measure outcome
-        outcome = measure!(state, 1)
-
-        ## if outcome != 0, run OAA again
-        if outcome == 0
-            state |> Daggered(u_model.ry_compiled_architecture);
-            state |> R0lstar;
+            ## pipe state into RyChain
             state |> u_model.ry_compiled_architecture;
-        end
+            relax!(state, collected_ry_lanes);
 
+            focus!(state, cnot_model.global_lane_map.lanes);
+            state |> cnot_model.architecture;
+            relax!(state, cnot_model.global_lane_map.lanes);
+
+            focus!(state, collected_ry_lanes);
+
+            ## measure outcome
+            outcome = measure!(state, 1)
+
+            ## if outcome != 0, run OAA again
+            if outcome == 0
+                state |> Daggered(u_model.ry_compiled_architecture);
+                state |> R0lstar;
+                state |> u_model.ry_compiled_architecture;
+                ## relax Ry lanes
+                relax!(state, collected_ry_lanes);
+            else
+                break
+            end
+
+        end
+        
         ## relax Ry lanes
         relax!(state, collected_ry_lanes);
 
@@ -582,5 +577,230 @@ function run_oaa(skeleton::OAABlock)
         end
     end
 
-    return state
+    hypothesis_size = skeleton.total_num_lanes + b
+
+    hypothesis_architecture = chain(
+        hypothesis_size
+    )
+
+    MAX_ROTATION = 2pi;
+
+    for bit in 1:b
+        for r in 1:skeleton.rotation_precision
+            # apply controlled R(x and y) gates
+            rx_param_index = 2 * skeleton.rotation_precision * (bit - 1) + r;
+            ry_param_index = 2 * skeleton.rotation_precision * (bit - 1) + rotation_precision + r;
+
+            hypothesis_architecture = chain(
+                hypothesis_size,
+                subroutine(hypothesis_architecture, 1:hypothesis_size),
+                control(rx_param_index, skeleton.total_num_lanes + bit => Rx(MAX_ROTATION / 2^(r))),
+                control(ry_param_index, skeleton.total_num_lanes + bit => Ry(MAX_ROTATION / 2^(r)))
+            );
+
+            cnot_subblock = chain(2, cnot(1, 2))
+
+            if bit != b
+                ctrl = skeleton.total_num_lanes - b +bit;
+                # apply controlled CNOT gate
+                hypothesis_architecture = chain(
+                    hypothesis_size,
+                    subroutine(hypothesis_architecture, 1:hypothesis_size),
+                    control(
+                        ctrl, [skeleton.total_num_lanes + bit, skeleton.total_num_lanes + bit + 1] => cnot_subblock
+                    )
+                );
+            end
+        end
+
+    end
+
+    state |> hypothesis_architecture
+
+    results = measure(state, nshots=100)
+
+    return results;
+
+    
+
+    ## -- END: test all-in-one results
+
+    # # define R0lstar
+    # R0lstar = chain(
+    #     skeleton.num_training_data + skeleton.rotation_precision + 1,
+    #     repeat(X, skeleton.num_training_data + 2:skeleton.num_training_data + skeleton.rotation_precision + 1),
+    #     cz(skeleton.num_training_data + 2:skeleton.num_training_data + skeleton.rotation_precision, skeleton.num_training_data + skeleton.rotation_precision + 1),
+    #     repeat(X, skeleton.num_training_data + 2:skeleton.num_training_data + skeleton.rotation_precision + 1),
+    # );
+
+    # MAX_ITER = 1;
+
+    # # iterate over the subblocks to train bit-by-bit
+    # for i in 1:b
+    #     u_model = skeleton.architecture_list[i]["U"]
+    #     cnot_model = skeleton.architecture_list[i]["CNOT"]
+
+    #     # organize lanes
+    #     target_lane = u_model.global_lane_map.target_lane;
+
+    #     # target_lane = models[i].global_lane_map.target_lane;
+
+    #     ## get RxChain and lanes
+    #     collected_rx_lanes = vcat([target_lane], u_model.global_lane_map.rx_model_lanes, u_model.global_lane_map.rx_param_lanes);
+        
+    #     ## RyChain and lanes
+    #     collected_ry_lanes = vcat([target_lane], u_model.global_lane_map.ry_model_lanes, u_model.global_lane_map.ry_param_lanes);
+        
+    #     # run state through first model
+    #     for j in 1:MAX_ITER
+    #         ## focus Rx lanes
+    #         focus!(state, collected_rx_lanes);
+
+    #         ## pipe state into RxChain
+    #         state |> u_model.rx_compiled_architecture;
+    #         relax!(state, collected_rx_lanes);
+
+    #         focus!(state, cnot_model.global_lane_map.lanes);
+    #         state |> cnot_model.architecture; # TODO: figure out how to align this, the alignment is off by 1 bit
+    #         relax!(state, cnot_model.global_lane_map.lanes);
+
+    #         focus!(state, collected_rx_lanes);
+    #         ## measure outcome
+    #         outcome = measure!(state, 1);
+
+    #         ## if outcome != 0, run OAA again
+    #         if outcome == 0
+    #             state |> Daggered(u_model.rx_compiled_architecture);
+    #             state |> R0lstar;
+    #             state |> u_model.rx_compiled_architecture;
+    #             ## relax Rx lanes
+    #             relax!(state, collected_rx_lanes);
+    #         else
+    #             ## relax Rx lanes
+    #             break
+    #         end
+    #     end
+
+    #     relax!(state, collected_rx_lanes);
+        
+
+    #     ## focus Ry lanes
+    #     for j in 1:MAX_ITER
+    #         focus!(state, collected_ry_lanes);
+
+    #         ## pipe state into RyChain
+    #         state |> u_model.ry_compiled_architecture;
+    #         relax!(state, collected_ry_lanes);
+
+    #         focus!(state, cnot_model.global_lane_map.lanes);
+    #         state |> cnot_model.architecture;
+    #         relax!(state, cnot_model.global_lane_map.lanes);
+
+    #         focus!(state, collected_ry_lanes);
+
+    #         ## measure outcome
+    #         outcome = measure!(state, 1)
+
+    #         ## if outcome != 0, run OAA again
+    #         if outcome == 0
+    #             state |> Daggered(u_model.ry_compiled_architecture);
+    #             state |> R0lstar;
+    #             state |> u_model.ry_compiled_architecture;
+    #             ## relax Ry lanes
+    #             relax!(state, collected_ry_lanes);
+    #         else
+    #             break
+    #         end
+
+    #     end
+        
+    #     ## relax Ry lanes
+    #     relax!(state, collected_ry_lanes);
+
+    #     # if i != b
+    #         # append the transition model
+    #     if i != b
+    #         transition_model = skeleton.architecture_list[i]["TRANSITION"]
+    #         transition_lane_map = compile_lane_map(transition_model)
+    #         focus!(state, transition_lane_map)
+    #         state |> transition_model.architecture
+    #         relax!(state, transition_lane_map)
+    #     end
+    # end
+
+    # return state
+
+    # ## -- START: test combined rotation scheme -- 
+
+    # # define R0lstar
+    # R0lstar = chain(
+    #     skeleton.total_num_lanes,
+    #     repeat(X, skeleton.num_training_data + 2:skeleton.num_training_data + skeleton.rotation_precision + 1),
+    #     cz(skeleton.num_training_data + 2:skeleton.num_training_data + skeleton.rotation_precision, skeleton.num_training_data + skeleton.rotation_precision + 1),
+    #     repeat(X, skeleton.num_training_data + 2:skeleton.num_training_data + skeleton.rotation_precision + 1),
+    # );
+
+    # for i in 1:b
+    #     u_model = skeleton.architecture_list[i]["U"]
+    #     cnot_model = skeleton.architecture_list[i]["CNOT"]
+
+    #     # organize lanes
+    #     target_lane = u_model.global_lane_map.target_lane;
+
+    #     # target_lane = models[i].global_lane_map.target_lane;
+
+    #     ## get RxChain and lanes
+    #     collected_rx_lanes = vcat([target_lane], u_model.global_lane_map.rx_model_lanes, u_model.global_lane_map.rx_param_lanes);
+        
+    #     ## RyChain and lanes
+    #     collected_ry_lanes = vcat([target_lane], u_model.global_lane_map.ry_model_lanes, u_model.global_lane_map.ry_param_lanes);
+
+    #     compiled_r_architecture = chain(skeleton.total_num_lanes,
+    #         subroutine(u_model.rx_compiled_architecture, collected_rx_lanes),
+    #         subroutine(u_model.ry_compiled_architecture, collected_ry_lanes)
+    #     );
+
+    #     # run state through first model
+    #     for j in 1:MAX_ITER
+    #         ## focus lanes
+    #         # focus!(state, collected_rx_lanes);
+
+    #         ## pipe state into RxChain
+    #         state |> compiled_r_architecture;
+    #         # relax!(state, collected_rx_lanes);
+
+    #         focus!(state, cnot_model.global_lane_map.lanes);
+    #         state |> cnot_model.architecture; # TODO: figure out how to align this, the alignment is off by 1 bit
+    #         relax!(state, cnot_model.global_lane_map.lanes);
+
+    #         # focus!(state, collected_rx_lanes);
+    #         ## measure outcome
+    #         outcome = measure!(state, target_lane);
+
+    #         ## if outcome != 0, run OAA again
+    #         if outcome == 0
+    #             state |> Daggered(compiled_r_architecture);
+    #             state |> R0lstar;
+    #             state |> compiled_r_architecture;
+    #             ## relax Rx lanes
+    #             # relax!(state, collected_rx_lanes);
+    #         else
+    #             ## relax Rx lanes
+    #             break
+    #         end
+    #     end
+
+    #     # append the transition model
+    #     if i != b
+    #         transition_model = skeleton.architecture_list[i]["TRANSITION"]
+    #         transition_lane_map = compile_lane_map(transition_model)
+    #         focus!(state, transition_lane_map)
+    #         state |> transition_model.architecture
+    #         relax!(state, transition_lane_map)
+    #     end
+    #     # relax!(state, collected_rx_lanes);
+    # end
+
+    # return state
+    # ## -- END: test combined rotation scheme --
 end

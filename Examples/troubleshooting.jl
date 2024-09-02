@@ -1,5 +1,3 @@
-# TODO: fix CNOT inclusion in U (remove from U, U^\dagger)
-
 # ======== IMPORTS ========
 # =========================
 if !isdefined(Main, :QML)
@@ -16,7 +14,7 @@ using Yao.EasyBuild, YaoPlots
 
 function build_circuit()
     training_data = [
-        [1,1]
+        [1,1], [1, 1]
     ]
     rotation_precision = 1
     model = create_oaa_circuit(training_data, rotation_precision);
@@ -115,8 +113,8 @@ x = measure(state, nshots=100);
 # store the parameter lanes to be accessed
 param_lanes = Vector{Int64}()
 
-for i in 1:length(models)
-    m = models[i]
+for i in 1:b
+    m = skeleton.architecture_list[i]["U"]
     append!(param_lanes, m.global_lane_map.rx_param_lanes)
     append!(param_lanes, m.global_lane_map.ry_param_lanes)
 end
@@ -134,3 +132,6 @@ println(measured_params)
 
 hypothesis = get_hypothesis(measured_params, rotation_precision, b)
 
+using Plots;
+histogram(Int.(hypothesis))
+plotmeasure(hypothesis)

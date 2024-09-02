@@ -18,10 +18,17 @@ function learn_distribution(model::OAABlock)
 	# store the parameter lanes to be accessed
 	param_lanes = Vector{Int64}()
 
-	for i in 1:length(model.models)
-		m = model.models[i]
+	for i in 1:model.num_bits
+		# measured lanes are:
+		# 	rx rotation parameters
+		# 	ry rotation parameters
+		# 	cnot (bit transition) parameter
+		m = model.architecture_list[i]["U"]
 		append!(param_lanes, m.global_lane_map.rx_param_lanes)
 		append!(param_lanes, m.global_lane_map.ry_param_lanes)
+		if i != model.num_bits
+			append!(param_lanes, [m.global_lane_map.cnot_param_lane])
+		end
 	end
 
 	# create an empty vector to store param results
@@ -34,14 +41,15 @@ function learn_distribution(model::OAABlock)
 	return measured_params
 end
 
-# samples = results from OAA
-# n = number of bits
+# measured_params = set of results
+# rotation_precision = rotation precision (Int)
+# b = number of bits in the data
 function get_hypothesis(measured_params::Vector{Vector{Int64}}, rotation_precision::Int64, b::Int64)
 	# for every sample
 	results = Vector{DitStr{2, b, Int64}}();
 
 	for s in 1:length(measured_params)
-		sample = measured_params[s]
+		sample = measured_params[s] 
 		# for every bit in the data point
 		# create an empty chain with number of bits
 		circuit = chain(b)
@@ -67,6 +75,16 @@ function get_hypothesis(measured_params::Vector{Vector{Int64}}, rotation_precisi
 				end
 			end
 
+			# apply CNOT gate if parameter bit == 1
+			if j != b
+				if sample[length(sample)] == 1
+					circuit = chain(b, 
+						subroutine(circuit, 1:b),
+						cnot(j, j + 1)
+					)
+				end
+			end
+			
 				
 			if j != b
 				# add CNOT gate
@@ -80,6 +98,7 @@ function get_hypothesis(measured_params::Vector{Vector{Int64}}, rotation_precisi
 		state = zero_state(b);
 		focus!(state, 1:b);
 		state |> circuit
+		relax!(state, 1:b);
 
 		result = measure(state, nshots=100);
 			
@@ -91,11 +110,9 @@ function get_hypothesis(measured_params::Vector{Vector{Int64}}, rotation_precisi
 	return results
 end
 
-# plots the results of specified array in a histogram
-function plotmeasure(x::Vector{})
-	# TODO: insert checks
+function plotmeasure(xInt::Vector{Int64})
 	b = length(x[1])
-	xInt = Int.(x)
+
 	st = length(xInt)
 
 	# n = skeleton total num lanes
@@ -134,4 +151,12 @@ function plotmeasure(x::Vector{})
 	scatter!(0:num_entries-1, ones(num_entries,1), markersize=0, label=:none,
 		series_annotations="|" .* string.(hist.edges[1][sorted_indices[begin:num_entries]]; base=2, pad=n) .* "⟩")
 	scatter!(0:num_entries-1, zeros(num_entries,1) .+ maximum(hist.weights), markersize=0, label=:none, series_annotations=string.(hist.weights[sorted_indices[begin:num_entries]]))
+end
+
+# plots the results of specified array in a histogram
+function plotmeasure(x::Vector{DitStr{}})
+	# TODO: insert checks
+	
+	xInt = Int.(x)
+	plotmeasure(xInt)
 end
