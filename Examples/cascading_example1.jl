@@ -9,11 +9,13 @@ include("../Modules/OAAPlotting.jl")
 
 using Yao
 using Yao.EasyBuild, YaoPlots
+using Plots
+
 
 # num_model_lanes = 2
 rotation_precision = 2;
 
-training_data = [[1,1], [1, 1], [1, 1]];
+training_data = [[1,1]];
 # training_data = [[0,0, 1],[1,0, 0], [1,1, 0]]
 
 model = create_oaa_circuit(training_data, rotation_precision);
@@ -30,6 +32,50 @@ hypothesis = get_hypothesis(measured_params, rotation_precision, b)
 
 plotmeasure(hypothesis)
 
+# ## -- START: test all-in-one results
+# results = run_oaa(model)
+
+# hypothesis_lanes = model.total_num_lanes + 1:model.total_num_lanes + b
+
+# measured_hypothesis = Vector{Vector{Int64}}()
+
+# for result in results
+# 	push!(measured_hypothesis, result[hypothesis_lanes])
+# end
+
+# using Counters
+
+# counter(measured_hypothesis)
+# ## -- END: test all-in-one results
+
+
+# ## -- START: visualizing distribution of target bits
+# arch_list = model.architecture_list
+# param_lanes = Vector{Int}()
+# for m in arch_list
+# 	t = m["U"]
+# 	push!(param_lanes, t.global_lane_map.target_lane)
+# end
+
+# results = Vector{UInt64}()
+
+# for result in measured_params
+# 	push!(results, parse(UInt, join(string.(result[param_lanes]))))
+# end
+
+# histogram(results)
+# ## -- END: visualizing distribution of target bits
+
+
+# ## -- START: visualizing the measured_params --
+# temp = Vector{UInt64}()
+# for i in 1:length(measured_params)
+# 	push!(temp, parse(UInt, join(string.(measured_params[i])); base=2))
+# end
+
+# histogram(temp)
+
+# ## -- END: visualizing the measured_params --
 
 ## -- START: plotmeasure troubleshooting -- ##
 x = hypothesis

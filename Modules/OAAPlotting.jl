@@ -110,9 +110,11 @@ function get_hypothesis(measured_params::Vector{Vector{Int64}}, rotation_precisi
 	return results
 end
 
-function plotmeasure(xInt::Vector{Int64})
+# plots the results of specified array in a histogram
+function plotmeasure(x::Vector{DitStr{}})
+	# TODO: insert checks
 	b = length(x[1])
-
+	xInt = Int.(x)
 	st = length(xInt)
 
 	# n = skeleton total num lanes
@@ -151,12 +153,4 @@ function plotmeasure(xInt::Vector{Int64})
 	scatter!(0:num_entries-1, ones(num_entries,1), markersize=0, label=:none,
 		series_annotations="|" .* string.(hist.edges[1][sorted_indices[begin:num_entries]]; base=2, pad=n) .* "⟩")
 	scatter!(0:num_entries-1, zeros(num_entries,1) .+ maximum(hist.weights), markersize=0, label=:none, series_annotations=string.(hist.weights[sorted_indices[begin:num_entries]]))
-end
-
-# plots the results of specified array in a histogram
-function plotmeasure(x::Vector{DitStr{}})
-	# TODO: insert checks
-	
-	xInt = Int.(x)
-	plotmeasure(xInt)
 end

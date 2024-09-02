@@ -472,8 +472,6 @@ function run_oaa(skeleton::OAABlock)
     # set up initial state
     state = zero_state(skeleton.total_num_lanes + b);
 
-
-    ## -- START: test all-in-one results
     # define R0lstar
     R0lstar = chain(
         skeleton.num_training_data + skeleton.rotation_precision + 1,
@@ -577,54 +575,83 @@ function run_oaa(skeleton::OAABlock)
         end
     end
 
-    hypothesis_size = skeleton.total_num_lanes + b
+    return state
 
-    hypothesis_architecture = chain(
-        hypothesis_size
-    )
+    # ## -- START: test combined rotation scheme -- 
 
-    MAX_ROTATION = 2pi;
+    # # define R0lstar
+    # R0lstar = chain(
+    #     skeleton.total_num_lanes,
+    #     repeat(X, skeleton.num_training_data + 2:skeleton.num_training_data + skeleton.rotation_precision + 1),
+    #     cz(skeleton.num_training_data + 2:skeleton.num_training_data + skeleton.rotation_precision, skeleton.num_training_data + skeleton.rotation_precision + 1),
+    #     repeat(X, skeleton.num_training_data + 2:skeleton.num_training_data + skeleton.rotation_precision + 1),
+    # );
 
-    for bit in 1:b
-        for r in 1:skeleton.rotation_precision
-            # apply controlled R(x and y) gates
-            rx_param_index = 2 * skeleton.rotation_precision * (bit - 1) + r;
-            ry_param_index = 2 * skeleton.rotation_precision * (bit - 1) + rotation_precision + r;
+    # for i in 1:b
+    #     u_model = skeleton.architecture_list[i]["U"]
+    #     cnot_model = skeleton.architecture_list[i]["CNOT"]
 
-            hypothesis_architecture = chain(
-                hypothesis_size,
-                subroutine(hypothesis_architecture, 1:hypothesis_size),
-                control(rx_param_index, skeleton.total_num_lanes + bit => Rx(MAX_ROTATION / 2^(r))),
-                control(ry_param_index, skeleton.total_num_lanes + bit => Ry(MAX_ROTATION / 2^(r)))
-            );
+    #     # organize lanes
+    #     target_lane = u_model.global_lane_map.target_lane;
 
-            cnot_subblock = chain(2, cnot(1, 2))
+    #     # target_lane = models[i].global_lane_map.target_lane;
 
-            if bit != b
-                ctrl = skeleton.total_num_lanes - b +bit;
-                # apply controlled CNOT gate
-                hypothesis_architecture = chain(
-                    hypothesis_size,
-                    subroutine(hypothesis_architecture, 1:hypothesis_size),
-                    control(
-                        ctrl, [skeleton.total_num_lanes + bit, skeleton.total_num_lanes + bit + 1] => cnot_subblock
-                    )
-                );
-            end
-        end
+    #     ## get RxChain and lanes
+    #     collected_rx_lanes = vcat([target_lane], u_model.global_lane_map.rx_model_lanes, u_model.global_lane_map.rx_param_lanes);
+        
+    #     ## RyChain and lanes
+    #     collected_ry_lanes = vcat([target_lane], u_model.global_lane_map.ry_model_lanes, u_model.global_lane_map.ry_param_lanes);
 
-    end
+    #     compiled_r_architecture = chain(skeleton.total_num_lanes,
+    #         subroutine(u_model.rx_compiled_architecture, collected_rx_lanes),
+    #         subroutine(u_model.ry_compiled_architecture, collected_ry_lanes)
+    #     );
 
-    state |> hypothesis_architecture
+    #     # run state through first model
+    #     for j in 1:MAX_ITER
+    #         ## focus lanes
+    #         # focus!(state, collected_rx_lanes);
 
-    results = measure(state, nshots=100)
+    #         ## pipe state into RxChain
+    #         state |> compiled_r_architecture;
+    #         # relax!(state, collected_rx_lanes);
 
-    return results;
+    #         focus!(state, cnot_model.global_lane_map.lanes);
+    #         state |> cnot_model.architecture; # TODO: figure out how to align this, the alignment is off by 1 bit
+    #         relax!(state, cnot_model.global_lane_map.lanes);
 
-    
+    #         # focus!(state, collected_rx_lanes);
+    #         ## measure outcome
+    #         outcome = measure!(state, target_lane);
 
-    ## -- END: test all-in-one results
+    #         ## if outcome != 0, run OAA again
+    #         if outcome == 0
+    #             state |> Daggered(compiled_r_architecture);
+    #             state |> R0lstar;
+    #             state |> compiled_r_architecture;
+    #             ## relax Rx lanes
+    #             # relax!(state, collected_rx_lanes);
+    #         else
+    #             ## relax Rx lanes
+    #             break
+    #         end
+    #     end
 
+    #     # append the transition model
+    #     if i != b
+    #         transition_model = skeleton.architecture_list[i]["TRANSITION"]
+    #         transition_lane_map = compile_lane_map(transition_model)
+    #         focus!(state, transition_lane_map)
+    #         state |> transition_model.architecture
+    #         relax!(state, transition_lane_map)
+    #     end
+    #     # relax!(state, collected_rx_lanes);
+    # end
+
+    # return state
+    # ## -- END: test combined rotation scheme --
+
+    # ## -- START: test all-in-one results
     # # define R0lstar
     # R0lstar = chain(
     #     skeleton.num_training_data + skeleton.rotation_precision + 1,
@@ -728,79 +755,49 @@ function run_oaa(skeleton::OAABlock)
     #     end
     # end
 
-    # return state
+    # hypothesis_size = skeleton.total_num_lanes + b
 
-    # ## -- START: test combined rotation scheme -- 
+    # hypothesis_architecture = chain(
+    #     hypothesis_size
+    # )
 
-    # # define R0lstar
-    # R0lstar = chain(
-    #     skeleton.total_num_lanes,
-    #     repeat(X, skeleton.num_training_data + 2:skeleton.num_training_data + skeleton.rotation_precision + 1),
-    #     cz(skeleton.num_training_data + 2:skeleton.num_training_data + skeleton.rotation_precision, skeleton.num_training_data + skeleton.rotation_precision + 1),
-    #     repeat(X, skeleton.num_training_data + 2:skeleton.num_training_data + skeleton.rotation_precision + 1),
-    # );
+    # MAX_ROTATION = 2pi;
 
-    # for i in 1:b
-    #     u_model = skeleton.architecture_list[i]["U"]
-    #     cnot_model = skeleton.architecture_list[i]["CNOT"]
+    # for bit in 1:b
+    #     for r in 1:skeleton.rotation_precision
+    #         # apply controlled R(x and y) gates
+    #         rx_param_index = 2 * skeleton.rotation_precision * (bit - 1) + r;
+    #         ry_param_index = 2 * skeleton.rotation_precision * (bit - 1) + rotation_precision + r;
 
-    #     # organize lanes
-    #     target_lane = u_model.global_lane_map.target_lane;
+    #         hypothesis_architecture = chain(
+    #             hypothesis_size,
+    #             subroutine(hypothesis_architecture, 1:hypothesis_size),
+    #             control(rx_param_index, skeleton.total_num_lanes + bit => Rx(MAX_ROTATION / 2^(r))),
+    #             control(ry_param_index, skeleton.total_num_lanes + bit => Ry(MAX_ROTATION / 2^(r)))
+    #         );
 
-    #     # target_lane = models[i].global_lane_map.target_lane;
+    #         cnot_subblock = chain(2, cnot(1, 2))
 
-    #     ## get RxChain and lanes
-    #     collected_rx_lanes = vcat([target_lane], u_model.global_lane_map.rx_model_lanes, u_model.global_lane_map.rx_param_lanes);
-        
-    #     ## RyChain and lanes
-    #     collected_ry_lanes = vcat([target_lane], u_model.global_lane_map.ry_model_lanes, u_model.global_lane_map.ry_param_lanes);
-
-    #     compiled_r_architecture = chain(skeleton.total_num_lanes,
-    #         subroutine(u_model.rx_compiled_architecture, collected_rx_lanes),
-    #         subroutine(u_model.ry_compiled_architecture, collected_ry_lanes)
-    #     );
-
-    #     # run state through first model
-    #     for j in 1:MAX_ITER
-    #         ## focus lanes
-    #         # focus!(state, collected_rx_lanes);
-
-    #         ## pipe state into RxChain
-    #         state |> compiled_r_architecture;
-    #         # relax!(state, collected_rx_lanes);
-
-    #         focus!(state, cnot_model.global_lane_map.lanes);
-    #         state |> cnot_model.architecture; # TODO: figure out how to align this, the alignment is off by 1 bit
-    #         relax!(state, cnot_model.global_lane_map.lanes);
-
-    #         # focus!(state, collected_rx_lanes);
-    #         ## measure outcome
-    #         outcome = measure!(state, target_lane);
-
-    #         ## if outcome != 0, run OAA again
-    #         if outcome == 0
-    #             state |> Daggered(compiled_r_architecture);
-    #             state |> R0lstar;
-    #             state |> compiled_r_architecture;
-    #             ## relax Rx lanes
-    #             # relax!(state, collected_rx_lanes);
-    #         else
-    #             ## relax Rx lanes
-    #             break
+    #         if bit != b
+    #             ctrl = skeleton.total_num_lanes - b +bit;
+    #             # apply controlled CNOT gate
+    #             hypothesis_architecture = chain(
+    #                 hypothesis_size,
+    #                 subroutine(hypothesis_architecture, 1:hypothesis_size),
+    #                 control(
+    #                     ctrl, [skeleton.total_num_lanes + bit, skeleton.total_num_lanes + bit + 1] => cnot_subblock
+    #                 )
+    #             );
     #         end
     #     end
 
-    #     # append the transition model
-    #     if i != b
-    #         transition_model = skeleton.architecture_list[i]["TRANSITION"]
-    #         transition_lane_map = compile_lane_map(transition_model)
-    #         focus!(state, transition_lane_map)
-    #         state |> transition_model.architecture
-    #         relax!(state, transition_lane_map)
-    #     end
-    #     # relax!(state, collected_rx_lanes);
     # end
 
-    # return state
-    # ## -- END: test combined rotation scheme --
+    # state |> hypothesis_architecture
+
+    # results = measure(state, nshots=100)
+
+    # return results;
+
+    # ## -- END: test all-in-one results
 end
