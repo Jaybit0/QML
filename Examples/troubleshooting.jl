@@ -14,7 +14,7 @@ using Yao.EasyBuild, YaoPlots
 
 function build_circuit()
     training_data = [
-        [1,1], [1, 1]
+        [1], [1], [1], [1]
     ]
     rotation_precision = 1
     model = create_oaa_circuit(training_data, rotation_precision);
@@ -49,6 +49,7 @@ R0lstar = chain(
 circuit = chain(skeleton.total_num_lanes);
 # vizcircuit(circuit)
 circuit_with_oaa = chain(skeleton.total_num_lanes);
+
 
 for i in 1:b
     u_model = skeleton.architecture_list[i]["U"]

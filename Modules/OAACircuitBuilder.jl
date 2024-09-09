@@ -2,9 +2,13 @@
 # Undergoing revisions:
 # DONE: correct the cnot_model mapping from local to global
 # DONE: include the CNOT parameter (in transition block) in hypothesis
-#   TODO: applying CNOT if parameter == 1
+#   DONE: applying CNOT if parameter == 1
+# DONE: make separate target x and target y bits
 #################
 # TODO: fix the level at which n, b are accessed
+# TODO: change organization to be RX_U, RX_CNOT, RY_U, RY_CNOT
+# TODO: change to only one lane map (clean up)
+# TODO: refactor code
 
 using Yao
 
@@ -32,7 +36,6 @@ export run_oaa;
 # stores indices of parameter, model, and target lanes.
 abstract type AbstractLaneMap end
 
-# TODO: rename to more descriptive data structure 
 abstract type AbstractCustomBlock end
 
 # generic LaneMap
@@ -49,11 +52,22 @@ mutable struct GlobalLaneMap<:AbstractLaneMap
     lanes::Vector{Int} # range of lanes used
     rx_model_lanes::Vector{Int} # lanes used only in the Rx model 
     ry_model_lanes::Vector{Int} # lanes used only in the Ry model
-    target_lane::Int # index of target lane
+    rx_target_lane::Int # index of target lane in rx rotations
+    ry_target_lane::Int # index of target lane in ry rotations
     rx_param_lanes::Vector{Int} # lanes used only for parameters in the Rx training
     ry_param_lanes::Vector{Int} # lanes used only for parameters in the Ry training
     cnot_param_lane::Int
 end
+# mutable struct GlobalLaneMap<:AbstractLaneMap
+#     size::Int # total number of lanes in the map
+#     lanes::Vector{Int} # range of lanes used
+#     rx_model_lanes::Vector{Int} # lanes used only in the Rx model 
+#     ry_model_lanes::Vector{Int} # lanes used only in the Ry model
+#     target_lane::Int # index of target lane
+#     rx_param_lanes::Vector{Int} # lanes used only for parameters in the Rx training
+#     ry_param_lanes::Vector{Int} # lanes used only for parameters in the Ry training
+#     cnot_param_lane::Int
+# end
 
 # organizes indices of different lanes (param, model, target) 
 # relative to the subsection of the circuit that corresponds to the bit
@@ -62,11 +76,22 @@ mutable struct LocalLaneMap<:AbstractLaneMap
     lanes::Vector{Int} # range of lanes used
     rx_model_lanes::Vector{Int} # lanes used only in the Rx model 
     ry_model_lanes::Vector{Int} # lanes used only in the Ry model
-    target_lane::Int # index of target lane
+    rx_target_lane::Int # index of target lane in rx rotations
+    ry_target_lane::Int # index of target lane in ry rotations
     rx_param_lanes::Vector{Int} # lanes used only for parameters in the Rx training
     ry_param_lanes::Vector{Int} # lanes used only for parameters in the Ry training
     cnot_param_lane::Int
 end
+# mutable struct LocalLaneMap<:AbstractLaneMap
+#     size::Int # total number of lanes in the map
+#     lanes::Vector{Int} # range of lanes used
+#     rx_model_lanes::Vector{Int} # lanes used only in the Rx model 
+#     ry_model_lanes::Vector{Int} # lanes used only in the Ry model
+#     target_lane::Int # index of target lane
+#     rx_param_lanes::Vector{Int} # lanes used only for parameters in the Rx training
+#     ry_param_lanes::Vector{Int} # lanes used only for parameters in the Ry training
+#     cnot_param_lane::Int
+# end
 
 # lane mapping for transitions between bits
 mutable struct TransitionLaneMap<:AbstractLaneMap
@@ -115,14 +140,16 @@ function compile_lane_map(model::ModelBlock, b::Int)
     if model.bit == b
         return vcat(
             map.rx_model_lanes, # only one model lane
-            [map.target_lane],
+            [map.rx_target_lane],
+            [map.ry_target_lane],
             map.rx_param_lanes,
             map.ry_param_lanes
         )
     else
         return vcat(
             map.rx_model_lanes, # only one model lane
-            [map.target_lane],
+            [map.rx_target_lane],
+            [map.ry_target_lane],
             map.rx_param_lanes,
             map.ry_param_lanes,
             [map.cnot_param_lane]
@@ -138,45 +165,45 @@ function compile_lane_map(model::AbstractCustomBlock, b::Int)
     return compile_lane_map(model)
 end
 
-    # TODO: put the data point: first, second, third... bit lanes next to each other
 # maps the model index to the set of lanes
 # called in build_model
 function map_global_lanes(bit::Int, rp::Int, n::Int, b::Int)
     # global lane locations for bit, b = total bits, n = number elements training data
     #   rp x-model bits n*(bit - 1) + 1:n*(bit - 1) + n
     #   rp y-model bits n*(bit - 1) + 1:n*(bit - 1) + n
-    #   1 target bit n*b + bit
+    #   1 rx target bit n*b + bit
+    #   1 ry target bit n*b + b + bit
     #   rp x-parameter bits n*(b + 1) + 2*rp*(bit - 1) + 1:n*(b + 1) + 2*rp*(bit - 1) + rp
     #   rp y-parameter bits n*(b + 1) + 2*rp*(bit - 1) + rp + 1:n*(b + 1) + 2*rp*(bit - 1) + 2*rp
     #   CNOT control parameter n*(b+1)+2*rp*b + bit
-    
-    # TODO: clean up redundant information?
     if bit == b
         return GlobalLaneMap(
-            (n + 1 + 2*rp)*b + b - 1, # size of entire circuit
-            1:n*(b+1)+2*rp*b + b, # lanes
+            # (n + 2 + 2*rp)*b + b - 1, # size of entire circuit
+            (n + 2 + 2*rp)*b + b - 1,
+            1:(n + 2 + 2*rp)*b + b - 1, # lanes
             n*(bit - 1) + 1:n*bit, # rp x-model
             n*(bit - 1) + 1:n*bit, # rp y-model
-            n*b + bit, # target bit
-            (n + 1)*b + rp*(bit - 1) + 1:(n + 1)*b + rp*(bit), # rp x-param
-            (n + 1 + rp)*b + rp*(bit - 1) + 1:(n + 1 + rp)*b + rp * (bit), # rp y-param
+            n*b + bit, # rx target bit
+            n*b + b + bit, # ry target bit
+            (n + 2)*b + rp*(bit - 1) + 1:(n + 2)*b + rp*(bit), # rp x-param
+            (n + 2 + rp)*b + rp*(bit - 1) + 1:(n + 2 + rp)*b + rp * (bit), # rp y-param
             -1 # no CNOT
         )
     else
         return GlobalLaneMap(
-            (n + 1 + 2*rp)*b + b - 1, # size of entire circuit
-            1:n*(b+1)+2*rp*b + b, # lanes
+            (n + 2 + 2*rp)*b + b - 1, # size of entire circuit
+            1:(n + 2 + 2*rp)*b + b - 1, # lanes
             n*(bit - 1) + 1:n*bit, # rp x-model
             n*(bit - 1) + 1:n*bit, # rp y-model
-            n*b + bit, # target bit
-            (n + 1)*b + rp*(bit - 1) + 1:(n + 1)*b + rp*(bit), # rp x-param
-            (n + 1 + rp)*b + rp*(bit - 1) + 1:(n + 1 + rp)*b + rp * (bit), # rp y-param
-            (n + 1 + 2*rp)*b + bit # cnot param lane
+            n*b + bit, # rx target bit
+            n*b + b + bit, # ry target bit
+            (n + 2)*b + rp*(bit - 1) + 1:(n + 2)*b + rp*(bit), # rp x-param
+            (n + 2 + rp)*b + rp*(bit - 1) + 1:(n + 2 + rp)*b + rp * (bit), # rp y-param
+            (n + 2 + 2*rp)*b + bit # cnot param lane
         )
     end
 end
 
-# TODO: remove local lane map references
 # called in build_model
 function map_local_lanes(n::Int, b::Int, rp::Int, bit::Int)
     # local lane locations:
@@ -189,26 +216,30 @@ function map_local_lanes(n::Int, b::Int, rp::Int, bit::Int)
     #   + 1 CNOT control parameter n + 2 + 2rp
 
     if bit == b
+        size = n + 2 + 2*rp
         return LocalLaneMap(
-            n + 1 + 2*rp, # size of ONLY lanes applicable to this bit
-            1:n + 1 + 2*rp, # all lanes
+            size, # size of ONLY lanes applicable to this bit
+            1:size, # all lanes
             1:n, # rx model
             1:n, # ry model
-            n + 1, # target
-            n + 2:n + 1 + rp, # rx param
-            n + 2 + rp:n + 1 + 2*rp, # ry param
+            n + 1, # rx target
+            n + 2, # ry target
+            n + 2 + 1:n + 2 + rp, # rx param
+            n + 2 + rp + 1:n + 2 + 2*rp, # ry param
             -1 # no CNOT
         )
     else
+        size = n + 2 + 2*rp + 1
         return LocalLaneMap(
-            n + 2 + 2*rp, # size of ONLY lanes applicable to this bit
-            1:n + 2 + 2*rp, # all lanes
+            size, # size of ONLY lanes applicable to this bit
+            1:size, # all lanes
             1:n, # rx model
             1:n, # ry model
-            n + 1, # target
-            n + 2:n + 1 + rp, # rx param
-            n + 2 + rp:n + 1 + 2*rp, # ry param
-            n + 2 + 2*rp # CNOT
+            n + 1, # rx target
+            n + 2, # ry target
+            n + 2 + 1:n + 2 + rp, # rx param
+            n + 2 + rp + 1:n + 2 + 2*rp, # ry param
+            n + 2 + 2*rp + 1 # CNOT
         )
     end
 end
@@ -251,7 +282,6 @@ end
 # builds the model for an individual qubit
 # called by create_oaa_circuit
 function build_U(bit::Int, rotation_precision::Int, training_data::Vector{Vector{Int}})
-    # TODO: implement checks on Vector sizes
     n = length(training_data)
     b = length(training_data[1])
 
@@ -385,9 +415,12 @@ function build_model(bit::Int, rotation_precision::Int, training_data::Vector{Ve
     # -- BUILD CNOT --
     # retrieve data from U_model
     size = U_model.global_lane_map.size;
-    target_lane = U_model.global_lane_map.target_lane;
-    cnot_model = build_CNOT(n, bit, rotation_precision, target_lane);
-    merge!(models_dict, Dict("CNOT"=>cnot_model))
+    rx_target_lane = U_model.global_lane_map.rx_target_lane;
+    ry_target_lane = U_model.global_lane_map.ry_target_lane;
+    rx_cnot_model = build_CNOT(n, bit, rotation_precision, rx_target_lane);
+    ry_cnot_model = build_CNOT(n, bit, rotation_precision, ry_target_lane);
+    merge!(models_dict, Dict("RX_CNOT"=>rx_cnot_model))
+    merge!(models_dict, Dict("RY_CNOT"=>ry_cnot_model))
 
     # -- BUILD TRANSITION -- 
     if bit != b
@@ -425,17 +458,38 @@ function create_oaa_circuit(training_data::Vector{Vector{Int}}, rotation_precisi
 
     for bit in 1:b
         model = architecture_list[bit]
+        u_model = model["U"]
+        rx_cnot_model = model["RX_CNOT"]
+        ry_cnot_model = model["RY_CNOT"]
         subarchitecture = chain(size)
+
+        # organize lanes
+        rx_target_lane = u_model.global_lane_map.rx_target_lane;
+        ry_target_lane = u_model.global_lane_map.ry_target_lane;
+
+        ## get RxChain and lanes
+        collected_rx_lanes = vcat([rx_target_lane], u_model.global_lane_map.rx_model_lanes, u_model.global_lane_map.rx_param_lanes);
+        
+        ## RyChain and lanes
+        collected_ry_lanes = vcat([ry_target_lane], u_model.global_lane_map.ry_model_lanes, u_model.global_lane_map.ry_param_lanes);
+
+        # subarchitecture = chain(
+        #     size,
+        #     subroutine(subarchitecture, 1:size),
+        #     subroutine(model["U"].architecture, compile_lane_map(model["U"], b))
+        # )
+        subarchitecture = chain(
+            size,
+            subroutine(subarchitecture, 1:size),
+            subroutine(u_model.rx_compiled_architecture, collected_rx_lanes),
+            subroutine(rx_cnot_model.architecture, rx_cnot_model.global_lane_map.lanes)
+        )
 
         subarchitecture = chain(
             size,
             subroutine(subarchitecture, 1:size),
-            subroutine(model["U"].architecture, compile_lane_map(model["U"], b))
-        )
-        subarchitecture = chain(
-            size,
-            subroutine(subarchitecture, 1:size),
-            subroutine(model["CNOT"].architecture, compile_lane_map(model["CNOT"], b))
+            subroutine(u_model.ry_compiled_architecture, collected_ry_lanes),
+            subroutine(ry_cnot_model.architecture, ry_cnot_model.global_lane_map.lanes)
         )
 
         if bit != b
@@ -485,18 +539,18 @@ function run_oaa(skeleton::OAABlock)
     # iterate over the subblocks to train bit-by-bit
     for i in 1:b
         u_model = skeleton.architecture_list[i]["U"]
-        cnot_model = skeleton.architecture_list[i]["CNOT"]
+        rx_cnot_model = skeleton.architecture_list[i]["RX_CNOT"]
+        ry_cnot_model = skeleton.architecture_list[i]["RY_CNOT"]
 
         # organize lanes
-        target_lane = u_model.global_lane_map.target_lane;
-
-        # target_lane = models[i].global_lane_map.target_lane;
+        rx_target_lane = u_model.global_lane_map.rx_target_lane;
+        ry_target_lane = u_model.global_lane_map.ry_target_lane;
 
         ## get RxChain and lanes
-        collected_rx_lanes = vcat([target_lane], u_model.global_lane_map.rx_model_lanes, u_model.global_lane_map.rx_param_lanes);
+        collected_rx_lanes = vcat([rx_target_lane], u_model.global_lane_map.rx_model_lanes, u_model.global_lane_map.rx_param_lanes);
         
         ## RyChain and lanes
-        collected_ry_lanes = vcat([target_lane], u_model.global_lane_map.ry_model_lanes, u_model.global_lane_map.ry_param_lanes);
+        collected_ry_lanes = vcat([ry_target_lane], u_model.global_lane_map.ry_model_lanes, u_model.global_lane_map.ry_param_lanes);
         
         # run state through first model
         for j in 1:MAX_ITER
@@ -507,15 +561,15 @@ function run_oaa(skeleton::OAABlock)
             state |> u_model.rx_compiled_architecture;
             relax!(state, collected_rx_lanes);
 
-            focus!(state, cnot_model.global_lane_map.lanes);
-            state |> cnot_model.architecture; # TODO: figure out how to align this, the alignment is off by 1 bit
-            relax!(state, cnot_model.global_lane_map.lanes);
+            focus!(state, rx_cnot_model.global_lane_map.lanes);
+            state |> rx_cnot_model.architecture;
+            relax!(state, rx_cnot_model.global_lane_map.lanes);
 
             focus!(state, collected_rx_lanes);
             ## measure outcome
             outcome = measure!(state, 1);
 
-            ## if outcome != 0, run OAA again
+            ## if outcome == 0, run OAA again
             if outcome == 0
                 state |> Daggered(u_model.rx_compiled_architecture);
                 state |> R0lstar;
@@ -531,38 +585,38 @@ function run_oaa(skeleton::OAABlock)
         relax!(state, collected_rx_lanes);
         
 
-        ## focus Ry lanes
-        for j in 1:MAX_ITER
-            focus!(state, collected_ry_lanes);
+        # ## focus Ry lanes
+        # for j in 1:MAX_ITER
+        #     focus!(state, collected_ry_lanes);
 
-            ## pipe state into RyChain
-            state |> u_model.ry_compiled_architecture;
-            relax!(state, collected_ry_lanes);
+        #     ## pipe state into RyChain
+        #     state |> u_model.ry_compiled_architecture;
+        #     relax!(state, collected_ry_lanes);
 
-            focus!(state, cnot_model.global_lane_map.lanes);
-            state |> cnot_model.architecture;
-            relax!(state, cnot_model.global_lane_map.lanes);
+        #     focus!(state, ry_cnot_model.global_lane_map.lanes);
+        #     state |> ry_cnot_model.architecture;
+        #     relax!(state, ry_cnot_model.global_lane_map.lanes);
 
-            focus!(state, collected_ry_lanes);
+        #     focus!(state, collected_ry_lanes);
 
-            ## measure outcome
-            outcome = measure!(state, 1)
+        #     ## measure outcome
+        #     outcome = measure!(state, 1);
 
-            ## if outcome != 0, run OAA again
-            if outcome == 0
-                state |> Daggered(u_model.ry_compiled_architecture);
-                state |> R0lstar;
-                state |> u_model.ry_compiled_architecture;
-                ## relax Ry lanes
-                relax!(state, collected_ry_lanes);
-            else
-                break
-            end
+        #     ## if outcome != 0, run OAA again
+        #     if outcome == 0
+        #         state |> Daggered(u_model.ry_compiled_architecture);
+        #         state |> R0lstar;
+        #         state |> u_model.ry_compiled_architecture;
+        #         ## relax Ry lanes
+        #         relax!(state, collected_ry_lanes);
+        #     else
+        #         break
+        #     end
 
-        end
+        # end
         
-        ## relax Ry lanes
-        relax!(state, collected_ry_lanes);
+        # ## relax Ry lanes
+        # relax!(state, collected_ry_lanes);
 
         # if i != b
             # append the transition model
@@ -617,7 +671,7 @@ function run_oaa(skeleton::OAABlock)
     #         # relax!(state, collected_rx_lanes);
 
     #         focus!(state, cnot_model.global_lane_map.lanes);
-    #         state |> cnot_model.architecture; # TODO: figure out how to align this, the alignment is off by 1 bit
+    #         state |> cnot_model.architecture; 
     #         relax!(state, cnot_model.global_lane_map.lanes);
 
     #         # focus!(state, collected_rx_lanes);
@@ -688,7 +742,7 @@ function run_oaa(skeleton::OAABlock)
     #         relax!(state, collected_rx_lanes);
 
     #         focus!(state, cnot_model.global_lane_map.lanes);
-    #         state |> cnot_model.architecture; # TODO: figure out how to align this, the alignment is off by 1 bit
+    #         state |> cnot_model.architecture; 
     #         relax!(state, cnot_model.global_lane_map.lanes);
 
     #         focus!(state, collected_rx_lanes);

@@ -11,26 +11,59 @@ using Yao
 using Yao.EasyBuild, YaoPlots
 using Plots
 
+using DataStructures
+
 
 # num_model_lanes = 2
 rotation_precision = 2;
 
-training_data = [[1,1]];
-# training_data = [[0,0, 1],[1,0, 0], [1,1, 0]]
+training_data = [[1], [1], [1], [1]];
 
 model = create_oaa_circuit(training_data, rotation_precision);
 
 vizcircuit(model.architecture)
 
 # TODO: fix register mismatch
-measured_params = learn_distribution(model)
+measured_params = learn_distribution(model);
+counter(measured_params)
 
 n = length(training_data) # number data points
 b = length(training_data[1]) # number bits
 
-hypothesis = get_hypothesis(measured_params, rotation_precision, b)
+hypothesis = get_hypothesis(measured_params, rotation_precision, b);
 
 plotmeasure(hypothesis)
+
+vis = chain(model.total_num_lanes);
+
+for i in 1:length(model.architecture_list)
+	m = model.architecture_list[i]
+
+	u_model = m["U"]
+	cnot = m["CNOT"]
+
+	target_lane = u_model.global_lane_map.target_lane;
+	collected_rx_lanes = vcat([target_lane], u_model.global_lane_map.rx_model_lanes, u_model.global_lane_map.rx_param_lanes);
+	collected_ry_lanes = vcat([target_lane], u_model.global_lane_map.ry_model_lanes, u_model.global_lane_map.ry_param_lanes);
+
+	vis = chain(
+		model.total_num_lanes,
+		subroutine(vis, 1:model.total_num_lanes),
+		subroutine(u_model.rx_compiled_architecture, collected_rx_lanes),
+		subroutine(cnot.architecture, cnot.global_lane_map.lanes),
+		subroutine(u_model.ry_compiled_architecture, collected_ry_lanes),
+		subroutine(cnot.architecture, cnot.global_lane_map.lanes)
+	)
+	if i != model.num_bits
+		t = m["TRANSITION"]
+		t_lane_map = compile_lane_map(t)
+		vis = chain(
+			model.total_num_lanes,
+			subroutine(vis, 1:model.total_num_lanes),
+			subroutine(t.architecture, t_lane_map)
+		)
+	end
+end
 
 # ## -- START: test all-in-one results
 # results = run_oaa(model)
@@ -50,20 +83,32 @@ plotmeasure(hypothesis)
 
 
 # ## -- START: visualizing distribution of target bits
-# arch_list = model.architecture_list
-# param_lanes = Vector{Int}()
-# for m in arch_list
-# 	t = m["U"]
-# 	push!(param_lanes, t.global_lane_map.target_lane)
-# end
+arch_list = model.architecture_list
+param_lanes = Vector{Vector{Int}}()
 
-# results = Vector{UInt64}()
+for i in 1:length(arch_list)
+	t = arch_list[i]["U"]
+	temp = Vector{Int}()
+	append!(temp, t.global_lane_map.rx_param_lanes)
+	append!(temp, t.global_lane_map.ry_param_lanes)
+
+	if i != b
+		push!(temp, t.global_lane_map.cnot_param_lane)
+	end
+	push!(param_lanes, temp)
+end
+
+results = Vector{UInt64}()
+
+for i in 1:length(measured_params)
+	push!(results, parse(UInt, join(string.(measured_params[i])); base=2))
+end
 
 # for result in measured_params
 # 	push!(results, parse(UInt, join(string.(result[param_lanes]))))
 # end
 
-# histogram(results)
+histogram(results)
 # ## -- END: visualizing distribution of target bits
 
 

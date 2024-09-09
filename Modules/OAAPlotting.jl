@@ -13,7 +13,7 @@ using YaoPlots
 # TODO: specify number of samples
 function learn_distribution(model::OAABlock)
 	state = run_oaa(model)
-	x = measure(state; nshots=100)
+	x = measure(state; nshots=100);
 
 	# store the parameter lanes to be accessed
 	param_lanes = Vector{Int64}()
@@ -30,7 +30,7 @@ function learn_distribution(model::OAABlock)
 			append!(param_lanes, [m.global_lane_map.cnot_param_lane])
 		end
 	end
-
+	
 	# create an empty vector to store param results
 	measured_params = Vector{Vector{Int64}}()
 
@@ -38,6 +38,7 @@ function learn_distribution(model::OAABlock)
 	for i in 1:length(x)
 		push!(measured_params, x[i][param_lanes])
 	end
+
 	return measured_params
 end
 
@@ -111,7 +112,7 @@ function get_hypothesis(measured_params::Vector{Vector{Int64}}, rotation_precisi
 end
 
 # plots the results of specified array in a histogram
-function plotmeasure(x::Vector{DitStr{}})
+function plotmeasure(x::Vector{})
 	# TODO: insert checks
 	b = length(x[1])
 	xInt = Int.(x)
@@ -151,6 +152,6 @@ function plotmeasure(x::Vector{DitStr{}})
 	)
 
 	scatter!(0:num_entries-1, ones(num_entries,1), markersize=0, label=:none,
-		series_annotations="|" .* string.(hist.edges[1][sorted_indices[begin:num_entries]]; base=2, pad=n) .* "⟩")
+		series_annotations="|" .* string.(hist.edges[1][sorted_indices[begin:num_entries]]; base=2, pad=b) .* "⟩")
 	scatter!(0:num_entries-1, zeros(num_entries,1) .+ maximum(hist.weights), markersize=0, label=:none, series_annotations=string.(hist.weights[sorted_indices[begin:num_entries]]))
 end
