@@ -17,7 +17,7 @@ using DataStructures
 # num_model_lanes = 2
 rotation_precision = 2;
 
-training_data = [[1], [1], [1], [1]];
+training_data = [[0], [1], [1], [1]];
 
 model = create_oaa_circuit(training_data, rotation_precision);
 
@@ -33,6 +33,7 @@ b = length(training_data[1]) # number bits
 hypothesis = get_hypothesis(measured_params, rotation_precision, b);
 
 plotmeasure(hypothesis)
+
 
 vis = chain(model.total_num_lanes);
 
