@@ -1,9 +1,7 @@
 #################
 # Undergoing revisions:
-
 # TODO: fix the level at which n, b are accessed
 # TODO: change organization to be RX_U, RX_CNOT, RY_U, RY_CNOT
-# TODO: change to only one lane map (clean up)
 # TODO: refactor code
 #################
 
@@ -35,39 +33,25 @@ abstract type AbstractLaneMap end
 
 abstract type AbstractCustomBlock end
 
-# generic LaneMap
 
+# # organizes indices of different lanes (param, model, target) 
+# # relative to the entire circuit
 mutable struct LaneMap<:AbstractLaneMap
     size::Int
+    lanes::Vector{Int} # range of lanes used
+    rx_model_lanes::Vector{Int} # lanes used only in the Rx model 
+    ry_model_lanes::Vector{Int} # lanes used only in the Ry model
+    rx_target_lane::Int # index of target lane in rx rotations
+    ry_target_lane::Int # index of target lane in ry rotations
+    rx_param_lanes::Vector{Int} # lanes used only for parameters in the Rx training
+    ry_param_lanes::Vector{Int} # lanes used only for parameters in the Ry training
+    cnot_param_lane::Int
+end
+
+# Simple lane map with minimal requirements
+mutable struct SimpleLaneMap<:AbstractLaneMap
+    size::Int
     lanes::Vector{Int}
-end
-
-# organizes indices of different lanes (param, model, target) 
-# relative to the entire circuit
-mutable struct GlobalLaneMap<:AbstractLaneMap
-    size::Int # total number of lanes in the map
-    lanes::Vector{Int} # range of lanes used
-    rx_model_lanes::Vector{Int} # lanes used only in the Rx model 
-    ry_model_lanes::Vector{Int} # lanes used only in the Ry model
-    rx_target_lane::Int # index of target lane in rx rotations
-    ry_target_lane::Int # index of target lane in ry rotations
-    rx_param_lanes::Vector{Int} # lanes used only for parameters in the Rx training
-    ry_param_lanes::Vector{Int} # lanes used only for parameters in the Ry training
-    cnot_param_lane::Int
-end
-
-# organizes indices of different lanes (param, model, target) 
-# relative to the subsection of the circuit that corresponds to the bit
-mutable struct LocalLaneMap<:AbstractLaneMap
-    size::Int # total number of lanes in the map
-    lanes::Vector{Int} # range of lanes used
-    rx_model_lanes::Vector{Int} # lanes used only in the Rx model 
-    ry_model_lanes::Vector{Int} # lanes used only in the Ry model
-    rx_target_lane::Int # index of target lane in rx rotations
-    ry_target_lane::Int # index of target lane in ry rotations
-    rx_param_lanes::Vector{Int} # lanes used only for parameters in the Rx training
-    ry_param_lanes::Vector{Int} # lanes used only for parameters in the Ry training
-    cnot_param_lane::Int
 end
 
 # lane mapping for transitions between bits
@@ -154,28 +138,27 @@ function map_global_lanes(bit::Int, rp::Int, n::Int, b::Int)
     #   rp y-parameter bits n*(b + 1) + 2*rp*(bit - 1) + rp + 1:n*(b + 1) + 2*rp*(bit - 1) + 2*rp
     #   CNOT control parameter n*(b+1)+2*rp*b + bit
     if bit == b
-        return GlobalLaneMap(
-            # (n + 2 + 2*rp)*b + b - 1, # size of entire circuit
-            (n + 2 + 2*rp)*b + b - 1,
-            1:(n + 2 + 2*rp)*b + b - 1, # lanes
-            n*(bit - 1) + 1:n*bit, # rp x-model
-            n*(bit - 1) + 1:n*bit, # rp y-model
+        return LaneMap(
+            (n + 2 + 2*rp)*b + b - 1, # size of entire circuit
+            collect(1:(n + 2 + 2*rp)*b + b - 1), # lanes
+            collect(n*(bit - 1) + 1:n*bit), # rp x-model
+            collect(n*(bit - 1) + 1:n*bit), # rp y-model
             n*b + bit, # rx target bit
             n*b + b + bit, # ry target bit
-            (n + 2)*b + rp*(bit - 1) + 1:(n + 2)*b + rp*(bit), # rp x-param
-            (n + 2 + rp)*b + rp*(bit - 1) + 1:(n + 2 + rp)*b + rp * (bit), # rp y-param
+            collect((n + 2)*b + rp*(bit - 1) + 1:(n + 2)*b + rp*(bit)), # rp x-param
+            collect((n + 2 + rp)*b + rp*(bit - 1) + 1:(n + 2 + rp)*b + rp * (bit)), # rp y-param
             -1 # no CNOT
         )
     else
-        return GlobalLaneMap(
+        return LaneMap(
             (n + 2 + 2*rp)*b + b - 1, # size of entire circuit
-            1:(n + 2 + 2*rp)*b + b - 1, # lanes
-            n*(bit - 1) + 1:n*bit, # rp x-model
-            n*(bit - 1) + 1:n*bit, # rp y-model
+            collect(1:(n + 2 + 2*rp)*b + b - 1), # lanes
+            collect(n*(bit - 1) + 1:n*bit), # rp x-model
+            collect(n*(bit - 1) + 1:n*bit), # rp y-model
             n*b + bit, # rx target bit
             n*b + b + bit, # ry target bit
-            (n + 2)*b + rp*(bit - 1) + 1:(n + 2)*b + rp*(bit), # rp x-param
-            (n + 2 + rp)*b + rp*(bit - 1) + 1:(n + 2 + rp)*b + rp * (bit), # rp y-param
+            collect((n + 2)*b + rp*(bit - 1) + 1:(n + 2)*b + rp*(bit)), # rp x-param
+            collect((n + 2 + rp)*b + rp*(bit - 1) + 1:(n + 2 + rp)*b + rp * (bit)), # rp y-param
             (n + 2 + 2*rp)*b + bit # cnot param lane
         )
     end
@@ -191,31 +174,30 @@ function map_local_lanes(n::Int, b::Int, rp::Int, bit::Int)
     #   rp x-parameter bits n + 2:n + 1 + rp
     #   rp y-parameter bits n + 2 + rp:n + 1 + 2rp
     #   + 1 CNOT control parameter n + 2 + 2rp
-
     if bit == b
         size = n + 2 + 2*rp
-        return LocalLaneMap(
+        return LaneMap(
             size, # size of ONLY lanes applicable to this bit
-            1:size, # all lanes
-            1:n, # rx model
-            1:n, # ry model
+            collect(1:size), # all lanes
+            collect(1:n), # rx model
+            collect(1:n), # ry model
             n + 1, # rx target
             n + 2, # ry target
-            n + 2 + 1:n + 2 + rp, # rx param
-            n + 2 + rp + 1:n + 2 + 2*rp, # ry param
+            collect(n + 2 + 1:n + 2 + rp), # rx param
+            collect(n + 2 + rp + 1:n + 2 + 2*rp), # ry param
             -1 # no CNOT
         )
     else
         size = n + 2 + 2*rp + 1
-        return LocalLaneMap(
+        return LaneMap(
             size, # size of ONLY lanes applicable to this bit
-            1:size, # all lanes
-            1:n, # rx model
-            1:n, # ry model
+            collect(1:size), # all lanes
+            collect(1:n), # rx model
+            collect(1:n), # ry model
             n + 1, # rx target
             n + 2, # ry target
-            n + 2 + 1:n + 2 + rp, # rx param
-            n + 2 + rp + 1:n + 2 + 2*rp, # ry param
+            collect(n + 2 + 1:n + 2 + rp), # rx param
+            collect(n + 2 + rp + 1:n + 2 + 2*rp), # ry param
             n + 2 + 2*rp + 1 # CNOT
         )
     end
@@ -240,7 +222,7 @@ end
 # builds the CNOT model
 function build_CNOT(n::Int, bit::Int, rotation_precision::Int, target_lane::Int)
     cnot_lanes = vcat(n*(bit - 1) + 1:n*bit, [target_lane])
-    cnot_lane_map = LaneMap(
+    cnot_lane_map = SimpleLaneMap(
         n + 1,
         cnot_lanes
     )
@@ -256,6 +238,23 @@ function build_CNOT(n::Int, bit::Int, rotation_precision::Int, target_lane::Int)
     )
 end
 
+function build_RX_U(bit::Int, rotation_precision::Int, training_data::Vector{Vector{Int}})
+    n = length(training_data)
+    b = length(training_data[1])
+
+    local_lanes = map_local_lanes(n, b, rotation_precision, bit)
+    ctrl_rotx(ctrl, target, θ) = control(ctrl, target => Rx(θ))
+end
+
+function build_RX_CNOT(bit::Int, rotation_precision::Int, training_data::Vector{Vector{Int}})
+end
+
+function build_RY_U(bit::Int, rotation_precision::Int, training_data::Vector{Vector{Int}})
+end
+
+function build_RY_CNOT(bit::Int, rotation_precision::Int, training_data::Vector{Vector{Int}})
+end
+
 # builds the model for an individual qubit
 # called by create_oaa_circuit
 function build_U(bit::Int, rotation_precision::Int, training_data::Vector{Vector{Int}})
@@ -264,10 +263,8 @@ function build_U(bit::Int, rotation_precision::Int, training_data::Vector{Vector
 
     local_lanes = map_local_lanes(n, b, rotation_precision, bit)
 
-    # controlled rx rotations
+    # controlled rotations operations
     ctrl_rotx(ctrl, target, θ) = control(ctrl, target => Rx(θ))
-
-    # controlled ry rotations
     ctrl_roty(ctrl, target, θ) = control(ctrl, target => Ry(θ))
 
     # model
@@ -303,6 +300,7 @@ function build_U(bit::Int, rotation_precision::Int, training_data::Vector{Vector
         subroutine(ry_chain, vcat(local_lanes.ry_model_lanes, local_lanes.ry_param_lanes))
     );
 
+    # apply NOT gates to places where the data has value 0
     zeros = Int[]
     for i in 1:n
         if training_data[i][bit] == 0
@@ -323,19 +321,11 @@ function build_U(bit::Int, rotation_precision::Int, training_data::Vector{Vector
 
     global_lanes = map_global_lanes(bit, rotation_precision, n, b)
 
-    
-
     rx_compiled_architecture = chain(
         1 + n + rotation_precision,
         subroutine(rx_chain, 2:1 + n + rotation_precision),
         subroutine(x_from_data, 2:1 + n)
     )
-
-    println(x_from_data)
-    println(local_lanes.lanes)
-    println(1 + n + rotation_precision)
-
-    println(rx_compiled_architecture)
 
     ry_compiled_architecture = chain(
         1 + n + rotation_precision,
