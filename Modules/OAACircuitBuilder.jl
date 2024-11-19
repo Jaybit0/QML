@@ -25,7 +25,7 @@ export map_local_lanes;
 export map_transition_lanes;
 export build_U;
 export build_transition;
-export create_oaa_circuit;
+export build_oaa_circuit;
 export run_oaa;
 
 # stores indices of parameter, model, and target lanes.
@@ -256,7 +256,7 @@ function build_RY_CNOT(bit::Int, rotation_precision::Int, training_data::Vector{
 end
 
 # builds the model for an individual qubit
-# called by create_oaa_circuit
+# called by build_oaa_circuit
 function build_U(bit::Int, rotation_precision::Int, training_data::Vector{Vector{Int}})
     n = length(training_data)
     b = length(training_data[1])
@@ -268,7 +268,10 @@ function build_U(bit::Int, rotation_precision::Int, training_data::Vector{Vector
     ctrl_roty(ctrl, target, θ) = control(ctrl, target => Ry(θ))
 
     # model
-    rx_subchain = chain(rotation_precision + 1, ctrl_rotx(j + 1, 1, MAX_ROTATION / 2^(j)) for j in 1:rotation_precision);
+    rx_subchain = chain(
+        rotation_precision + 1, 
+        ctrl_rotx(j + 1, 1, MAX_ROTATION / 2^(j)) for j in 1:rotation_precision
+    );
 
     x_temp = chain(
         rotation_precision + n,
@@ -281,7 +284,10 @@ function build_U(bit::Int, rotation_precision::Int, training_data::Vector{Vector
         subroutine(x_temp, 1:rotation_precision + n)
     );
 
-    ry_subchain = chain(rotation_precision + 1, ctrl_roty(j + 1, 1, MAX_ROTATION / 2^(j)) for j in 1:rotation_precision);
+    ry_subchain = chain(
+        rotation_precision + 1, 
+        ctrl_roty(j + 1, 1, MAX_ROTATION / 2^(j)) for j in 1:rotation_precision
+    );
 
     y_temp = chain(
         rotation_precision + n,
@@ -345,7 +351,7 @@ function build_U(bit::Int, rotation_precision::Int, training_data::Vector{Vector
 end
 
 # TODO: fix reliance on ctrl from other method
-# called by create_oaa_circuit
+# called by build_oaa_circuit
 function build_transition(bit::Int, ctrl_index::Int, n::Int)
 
     lanes = map_transition_lanes(bit, n, ctrl_index)
@@ -411,7 +417,7 @@ end
 
 # generates the underlying cascading circuit for oblivious amplitude amplitification
 # to run OAA on the result, use run_OAA()
-function create_oaa_circuit(training_data::Vector{Vector{Int}}, rotation_precision::Int)
+function build_oaa_circuit(training_data::Vector{Vector{Int}}, rotation_precision::Int)
     if length(training_data) < 1
         # TODO: implement checks
         return nothing

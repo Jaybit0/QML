@@ -14,12 +14,11 @@ using Plots
 using DataStructures
 
 
-# num_model_lanes = 2
-rotation_precision = 2;
+rotation_precision = 3;
 
-training_data = [[0], [1], [1], [1]];
+training_data = [[1], [1]];
 
-model = create_oaa_circuit(training_data, rotation_precision);
+model = build_oaa_circuit(training_data, rotation_precision);
 
 vizcircuit(model.architecture)
 
