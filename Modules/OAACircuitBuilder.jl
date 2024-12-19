@@ -77,6 +77,17 @@ mutable struct ModelBlock<:AbstractCustomBlock
     global_lane_map::AbstractLaneMap
 end
 
+mutable struct TempModelBlock<:AbstractCustomBlock
+    architecture::ChainBlock # circuit corresponding to the specified bit
+    x_from_data::ChainBlock
+    rx_compiled_architecture::ChainBlock # circuit corresponding to only the Rx model, used in training
+    ry_compiled_architecture::ChainBlock # circuit corresponding to only the Ry model, used in training
+    bit::Int # index of the bit
+    rotation_precision::Int
+    local_lane_map::AbstractLaneMap
+    global_lane_map::AbstractLaneMap
+end
+
 # circuit corresponding to transitions between bits
 mutable struct TransitionBlock<:AbstractCustomBlock
     architecture::ChainBlock # circuit corresponding to CCNOT gate used to transition between bits, used in training
@@ -339,8 +350,19 @@ function build_U(bit::Int, rotation_precision::Int, training_data::Vector{Vector
         subroutine(x_from_data, 2:1 + n)
     )
 
-    return ModelBlock(
+    # return ModelBlock(
+    #     model,
+    #     rx_compiled_architecture,
+    #     ry_compiled_architecture,
+    #     bit,
+    #     rotation_precision,
+    #     local_lanes,
+    #     global_lanes
+    # )
+
+    return TempModelBlock(
         model,
+        x_from_data,
         rx_compiled_architecture,
         ry_compiled_architecture,
         bit,
@@ -402,6 +424,8 @@ function build_model(bit::Int, rotation_precision::Int, training_data::Vector{Ve
     ry_target_lane = U_model.global_lane_map.ry_target_lane;
     rx_cnot_model = build_CNOT(n, bit, rotation_precision, rx_target_lane);
     ry_cnot_model = build_CNOT(n, bit, rotation_precision, ry_target_lane);
+    
+    
     merge!(models_dict, Dict("RX_CNOT"=>rx_cnot_model))
     merge!(models_dict, Dict("RY_CNOT"=>ry_cnot_model))
 
