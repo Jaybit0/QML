@@ -14,13 +14,14 @@ using Plots
 using DataStructures
 
 
-rotation_precision = 3;
+rotation_precision = 1;
 
 training_data = [[1], [1]];
 
 model = build_oaa_circuit(training_data, rotation_precision);
 
 vizcircuit(model.architecture)
+
 
 # TODO: fix register mismatch
 measured_params = learn_distribution(model);
