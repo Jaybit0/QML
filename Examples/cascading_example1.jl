@@ -13,10 +13,9 @@ using Plots
 
 using DataStructures
 
+rotation_precision = 2;
 
-rotation_precision = 1;
-
-training_data = [[1], [1]];
+training_data = [[0, 0], [0, 0]];
 
 model = build_oaa_circuit(training_data, rotation_precision);
 
@@ -172,28 +171,28 @@ bar(
 
 # # -- START: viz oaa circuit --
 
-# skeleton = model
+skeleton = model
 
-# models = skeleton.models
-# transitions = skeleton.transition_models
+models = skeleton.models
+transitions = skeleton.transition_models
 
-# R0lstar = chain(
-#     skeleton.num_bits - 2 + 2 * skeleton.rotation_precision + 1,
-#     repeat(X, skeleton.num_bits + 2:skeleton.num_bits + skeleton.rotation_precision + 1),
-#     cz(skeleton.num_bits + 2:skeleton.num_bits + skeleton.rotation_precision, skeleton.num_bits + skeleton.rotation_precision + 1),
-#     repeat(X, skeleton.num_bits + 2:skeleton.num_bits + skeleton.rotation_precision + 1),
-# );
+R0lstar = chain(
+    skeleton.num_bits - 2 + 2 * skeleton.rotation_precision + 1,
+    repeat(X, skeleton.num_bits + 2:skeleton.num_bits + skeleton.rotation_precision + 1),
+    cz(skeleton.num_bits + 2:skeleton.num_bits + skeleton.rotation_precision, skeleton.num_bits + skeleton.rotation_precision + 1),
+    repeat(X, skeleton.num_bits + 2:skeleton.num_bits + skeleton.rotation_precision + 1),
+);
 
-# lanes = vcat()
+lanes = vcat()
 
-# n = skeleton.total_num_lanes;
+n = skeleton.total_num_lanes;
 
-# vizcircuit(R0lstar)
+vizcircuit(R0lstar)
 
-# temp = chain(n,
-#     subroutine(R0lstar, 1:n),
-#     subroutine(Daggered(models[1].rx_compiled_architecture), 1:n),
-#     subroutine(R0lstar, 1:n),
-#     subroutine(models[1].rx_compiled_architecture, 1:n)
-# )
-# # -- END: viz oaa circuit
+temp = chain(n,
+    subroutine(R0lstar, 1:n),
+    subroutine(Daggered(models[1].rx_compiled_architecture), 1:n),
+    subroutine(R0lstar, 1:n),
+    subroutine(models[1].rx_compiled_architecture, 1:n)
+)
+# -- END: viz oaa circuit
