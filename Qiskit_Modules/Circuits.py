@@ -55,7 +55,6 @@ def build_transformation(N, R):
 
     return transformation_circ
 
-
 def build_circuit(X, R):
     '''
     args:
@@ -90,6 +89,7 @@ def build_circuit(X, R):
 
         for d in range(N):
             if X[d][i] == 0:
+                # add X values for all bits with 0's
                 circuit.x(...)
         
         # measure
