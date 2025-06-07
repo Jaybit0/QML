@@ -3,33 +3,33 @@ from qiskit.circuit.library import RXGate, RYGate, CZGate, MCXGate, RZGate, MCMT
 
 import numpy as np
 
-def build_rx(N, R):
-    rx_circuit = QuantumCircuit(N + R + 1)
+# def build_rx(N, R, X):
+#     rx_circuit = QuantumCircuit(N + R + 1)
 
-    # apply Rx rotation gates
-    for i in range(N):
-        for r in range(R):
-            gate = RXGate(np.pi / (2**r))
-            rx_circuit.append(gate.control(1), (N + 1 + r, i))
+#     # apply Rx rotation gates
+#     for i in range(N):
+#         for r in range(R):
+#             gate = RXGate(np.pi / (2**r))
+#             rx_circuit.append(gate.control(1), (N + 1 + r, i))
 
-    # apply CNOT gate to target
-    rx_circuit.append(MCXGate(N), list(range(0, N+1)))
+#     # apply CNOT gate to target
+#     rx_circuit.append(MCXGate(N), list(range(0, N+1)))
 
-    return rx_circuit
+#     return rx_circuit
 
-def build_ry(N, R):
-    ry_circuit = QuantumCircuit(N + R + 1)
+# def build_ry(N, R, X):
+#     ry_circuit = QuantumCircuit(N + R + 1)
 
-    # apply Rx rotation gates
-    for i in range(N):
-        for r in range(R):
-            gate = RYGate(np.pi / (2**r))
-            ry_circuit.append(gate.control(1), (N + 1 + r, i))
+#     # apply Rx rotation gates
+#     for i in range(N):
+#         for r in range(R):
+#             gate = RYGate(np.pi / (2**r))
+#             ry_circuit.append(gate.control(1), (N + 1 + r, i))
 
-    # apply CNOT gate to target
-    ry_circuit.append(MCXGate(N), list(range(0, N+1)))
+#     # apply CNOT gate to target
+#     ry_circuit.append(MCXGate(N), list(range(0, N+1)))
 
-    return ry_circuit
+#     return ry_circuit
 
 def build_transition(N):
     transition_circ = QuantumCircuit(2*N + 1)
@@ -77,8 +77,8 @@ def build_circuit(X, R):
 
     circuit.h(list(range(N*B + 2*B, (N + 2 + 2*R) * B + B - 1)))
 
-    rx_block = build_rx(N, R)
-    ry_block = build_ry(N, R)
+    rx_block = build_rx(N, R, X)
+    ry_block = build_ry(N, R, X)
     transition_block = build_transition(N)
     transformation_block = build_transformation(N, R)
 
