@@ -139,3 +139,4 @@ def build_circuit(X, R):
 	circuit.measure(qr[N*B + 2*B:N*B + 2*B + 2*R*B], cr)
 
 	return circuit
+
