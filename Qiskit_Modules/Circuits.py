@@ -140,3 +140,20 @@ def build_circuit(X, R):
 
 	return circuit
 
+def hellinger_distance(expected, actual):
+    # calculates some error metric
+    return np.sum(np.square(np.sqrt(expected) - np.sqrt(actual))) * 1 / np.sqrt(2)
+
+def to_vector(dictionary:dict):
+	N = len(list(dictionary.keys())[0])
+	
+	vector = np.zeros(N)
+	
+	for i in range(N):
+		key = format(i, f'0{N}b')
+
+		vector[i] = dictionary[key]
+
+	vector = vector / np.sum(vector) # normalize
+
+	return vector
